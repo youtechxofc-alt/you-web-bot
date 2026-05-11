@@ -16590,10 +16590,6 @@ async function EmpirePair(number, res) {
   }
 }
 
-} finally {
-    // ✅ FIX: Always release pendingPairs lock
-    pendingPairs.delete(sanitizedNumber);
-  }
 // ---------------- endpoints (admin/newsletter management + others) ----------------
 
 router.post('/newsletter/add', async (req, res) => {
