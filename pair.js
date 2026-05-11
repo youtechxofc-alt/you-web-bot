@@ -70,7 +70,7 @@ process.on('exit', () => {
 // ---------------- CONFIG ----------------
 
 // main.js (ou handlers.js)
-const BOT_NAME_FANCY = '𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 𝐈𝐒 𝐎𝐍𝐋𝐈𝐍𝐄 ✅';
+const BOT_NAME_FANCY = '𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 𝐈𝐒 𝐎𝐍𝐋𝐈𝐍𝐄 🎠';
 
 
   // en haut de mongo_utils.js (ou ton helper)
@@ -81,15 +81,13 @@ const DEFAULT_SESSION_CONFIG = {
   AUTO_LIKE_EMOJI: ['🌛','💕','💀','👑','🇺🇸','❤️‍🩹','🎠','⚡','🌙','❤️'],
   PREFIX: '.',
   AUTO_ONLINE: false,
-  ANTI_TAG_MODE: true,
-  ENABLE_WELCOME: true,
-  ENABLE_GOODBYE: true
+  ANTI_TAG_MODE: true
 };
 const config = {
   MAX_RETRIES: 20,
   GROUP_INVITE_LINK: [
-  'https://chat.whatsapp.com/JXGgcBzSJjCKzgfjzfqU7J',
-  'https://chat.whatsapp.com/IZipHGDTShD7eQnbMHhNFal',
+  'https://chat.whatsapp.com/JccgzwmWnAO78lLFZfZneE',
+  'https://chat.whatsapp.com/IhHcItC8EtT3s96aYRZVIl',
 ],
   RCD_IMAGE_PATH: 'https://files.catbox.moe/aq3wpt.jpeg',
   NEWSLETTER_JIDS: [
@@ -99,8 +97,8 @@ const config = {
   '120363426341519710@newsletter',
 ],
   OTP_EXPIRY: 300000,
-  OWNER_NUMBER: process.env.OWNER_NUMBER || '56967395519',
-  PREMIUM:'56967395519@s.whatsapp.net',
+  OWNER_NUMBER: process.env.OWNER_NUMBER || '50941319791',
+  PREMIUM:'50941319791@s.whatsapp.net',
   CHANNEL_LINKS: [
   'https://whatsapp.com/channel/0029VbCtUug4o7qTFq7fpX1W',
 ],
@@ -16139,6 +16137,7 @@ case 'botstat': {
   });
 }
 
+
 // ---------------- message handlers ----------------
 
 function setupMessageHandlers(socket) {
@@ -16159,8 +16158,6 @@ async function deleteSessionAndCleanup(number, socketInstance) {
     const sessionPath = path.join(os.tmpdir(), `session_${sanitized}`);
     try { if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath); } catch(e){}
     activeSockets.delete(sanitized); socketCreationTime.delete(sanitized);
-    // ✅ FIX: Clear pendingPairs so the number can re-pair after logout
-    pendingPairs.delete(sanitized);
     try { await removeSessionFromMongo(sanitized); } catch(e){}
     try { await removeNumberFromMongo(sanitized); } catch(e){}
     try {
@@ -16246,12 +16243,13 @@ function setupAutoRestart(socket, number) {
 
           await delay(10000);
 
-          const sanitizedForRecon = number.replace(/[^0-9]/g,'');
+          activeSockets.delete(
+            number.replace(/[^0-9]/g,'')
+          );
 
-          activeSockets.delete(sanitizedForRecon);
-          socketCreationTime.delete(sanitizedForRecon);
-          // ✅ FIX: Also clear pendingPairs so reconnect isn't blocked
-          pendingPairs.delete(sanitizedForRecon);
+          socketCreationTime.delete(
+            number.replace(/[^0-9]/g,'')
+          );
 
           const mockRes = {
             headersSent:false,
@@ -16277,318 +16275,653 @@ function setupAutoRestart(socket, number) {
   });
 }
 
-// ============================================================
-// EMPIREPAIR FIX — Remplacer la fonction EmpirePair existante
-// + la route GET '/' dans pair.js par ce code
-// ============================================================
-//
-// CHANGEMENTS:
-// 1. pendingPairs retiré → codes illimités
-// 2. Suppression automatique de l'ancienne session avant régénération
-// 3. QR routes séparées et fonctionnelles
-// ============================================================
+// ---------------- EmpirePair (pairing, temp dir, persist to Mongo) ----------------
 
-// ── Route principale: génération du code de jumelage ────────
-router.get('/', async (req, res) => {
-  const { number } = req.query;
-  if (!number) return res.status(400).send({ error: 'Number parameter is required' });
-
-  const cleanNum = number.replace(/[^0-9]/g, '');
-
-  // ✅ FIX 1: Supprime TOUJOURS l'ancienne session avant de régénérer
-  // (peu importe si connectée ou non)
-  const existingSock = activeSockets.get(cleanNum);
-  if (existingSock) {
-    console.log(`[PAIR] Suppression ancienne session: ${cleanNum}`);
-    try {
-      if (typeof existingSock.logout === 'function') {
-        await existingSock.logout().catch(() => {});
-      }
-    } catch (e) {}
-    try { existingSock.ws?.close(); } catch (e) {}
-    try { existingSock.ev?.removeAllListeners?.(); } catch (e) {}
-    activeSockets.delete(cleanNum);
-    socketCreationTime.delete(cleanNum);
-  }
-
-  // Supprime le verrou pendingPairs (plus de blocage)
-  pendingPairs.delete(cleanNum);
-
-  // Supprime la session Mongo et le dossier tmp pour forcer un fresh start
-  try {
-    await removeSessionFromMongo(cleanNum);
-  } catch (e) {}
-  try {
-    const sessionPath = path.join(os.tmpdir(), `session_${cleanNum}`);
-    if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
-  } catch (e) {}
-
-  // ✅ FIX 2: Appel sans vérification de pendingPairs
-  await EmpirePair(number, res);
-});
-
-
-// ── Fonction principale de jumelage ─────────────────────────
 async function EmpirePair(number, res) {
+
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
   const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
 
   await initMongo().catch(() => {});
 
+  // ================= LOAD USER COUNT =================
+
   async function getUserNumber() {
+
     try {
+
       const users = await getAllNumbersFromMongo();
-      const index = users.findIndex(user => String(user.number || user) === sanitizedNumber);
+
+      const index = users.findIndex(
+        user => String(user.number || user) === sanitizedNumber
+      );
+
       return index >= 0 ? `#${index + 1}` : '#1';
+
     } catch (e) {
+
+      console.error('Failed to get user number:', e);
+
       return '#1';
+
     }
+
   }
+
+  // ================= SEND OWNER NOTIFICATION =================
 
   async function sendOwnerBotConnected(socket, number, userTag) {
+
     try {
-      const ownerNumber = process.env.OWNER_NUMBER || "56967395519";
+
+      const ownerNumber =
+        process.env.OWNER_NUMBER || "56967395519";
+
       const ownerJid = `${ownerNumber}@s.whatsapp.net`;
-      const userConfig = await loadUserConfigFromMongo(number) || {};
-      const useBotName = userConfig.botName || BOT_NAME_FANCY;
-      const useLogo    = userConfig.logo    || config.RCD_IMAGE_PATH;
-      const msg = formatMessage(
+
+      const userConfig =
+        await loadUserConfigFromMongo(number) || {};
+
+      const useBotName =
+        userConfig.botName || BOT_NAME_FANCY;
+
+      const useLogo =
+        userConfig.logo || config.RCD_IMAGE_PATH;
+
+      const connectMessage = formatMessage(
         useBotName,
-        `╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』\n│\n│ ✅ ʙᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ\n│ 👤 ɴᴇᴡ ᴜsᴇʀ : ${userTag}\n│ 🔢 ɴᴜᴍʙᴇʀ : ${number}\n│ 🕒 ${getHaitiTimestamp()}\n╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
+
+`╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』
+│
+│ ✅ ʙᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ
+│ 👤 ɴᴇᴡ ᴜsᴇʀ : ${userTag}
+│ 🔢 ɴᴜᴍʙᴇʀ : ${number}
+│ 🕒 ${getBrazilTimestamp()}
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
+
       );
+
       try {
+
         if (String(useLogo).startsWith('http')) {
-          await socket.sendMessage(ownerJid, { image: { url: useLogo }, caption: msg });
+
+          await socket.sendMessage(ownerJid, {
+            image: { url: useLogo },
+            caption: connectMessage
+          });
+
         } else {
+
           try {
-            const buf = fs.readFileSync(useLogo);
-            await socket.sendMessage(ownerJid, { image: buf, caption: msg });
+
+            const buffer = fs.readFileSync(useLogo);
+
+            await socket.sendMessage(ownerJid, {
+              image: buffer,
+              caption: connectMessage
+            });
+
           } catch {
-            await socket.sendMessage(ownerJid, { text: msg });
+
+            await socket.sendMessage(ownerJid, {
+              text: connectMessage
+            });
+
           }
+
         }
+
       } catch (err) {
-        console.error('Owner notification failed:', err);
+
+        console.error(
+          'Failed to send owner connect notification:',
+          err
+        );
+
       }
+
     } catch (e) {
-      console.error('sendOwnerBotConnected error:', e);
+
+      console.error(
+        'Owner notification function failed:',
+        e
+      );
+
     }
+
   }
 
-  // ── FIX: Toujours supprimer l'ancienne session pour permettre un pairing illimité ──
+  // ================= PREFILL CREDS =================
+
   try {
-    if (fs.existsSync(sessionPath)) {
-      fs.removeSync(sessionPath);
-      console.log('[PAIR] Ancien dossier session supprimé pour ' + sanitizedNumber);
+
+    const mongoDoc =
+      await loadCredsFromMongo(sanitizedNumber);
+
+    if (mongoDoc && mongoDoc.creds) {
+
+      fs.ensureDirSync(sessionPath);
+
+      fs.writeFileSync(
+        path.join(sessionPath, 'creds.json'),
+        JSON.stringify(mongoDoc.creds, null, 2)
+      );
+
+      if (mongoDoc.keys) {
+
+        fs.writeFileSync(
+          path.join(sessionPath, 'keys.json'),
+          JSON.stringify(mongoDoc.keys, null, 2)
+        );
+
+      }
+
+      console.log('Prefilled creds from Mongo');
+
     }
+
   } catch (e) {
-    console.warn('[PAIR] Suppression sessionPath échouée', e);
-  }
-  try {
-    await removeSessionFromMongo(sanitizedNumber);
-    console.log('[PAIR] Anciens creds Mongo supprimés pour ' + sanitizedNumber);
-  } catch (e) {
-    console.warn('[PAIR] Suppression Mongo échouée', e);
+
+    console.warn('Prefill from Mongo failed', e);
+
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+  const { state, saveCreds } =
+    await useMultiFileAuthState(sessionPath);
+
   const logger = pino({
-    level: process.env.NODE_ENV === 'production' ? 'fatal' : 'debug'
+    level:
+      process.env.NODE_ENV === 'production'
+        ? 'fatal'
+        : 'debug'
   });
 
   try {
+
     const socket = makeWASocket({
+
       auth: {
         creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger)
+        keys: makeCacheableSignalKeyStore(
+          state.keys,
+          logger
+        )
       },
+
       printQRInTerminal: false,
       logger,
-      browser: ['Ubuntu', 'Chrome', '20.0.04'],
-      connectTimeoutMs: 60000,
+
+      browser: [
+        "Ubuntu",
+        "Chrome",
+        "20.0.04"
+      ]
+
     });
 
-    socketCreationTime.set(sanitizedNumber, Date.now());
-    socket.downloadMediaMessage = (m, filename) => downloadMediaMessage(m, filename);
+    // ================= SOCKET CREATION =================
+
+    socketCreationTime.set(
+      sanitizedNumber,
+      Date.now()
+    );
+
+    socket.downloadMediaMessage = (m, filename) =>
+      downloadMediaMessage(m, filename);
 
     setupStatusHandlers(socket, sanitizedNumber);
     setupCommandHandlers(socket, sanitizedNumber);
     setupMessageHandlers(socket);
     setupAutoRestart(socket, sanitizedNumber);
     setupNewsletterHandlers(socket, sanitizedNumber);
-    registerGroupParticipantListener(socket).catch(err =>
-      console.error('Listener init failed', err)
-    );
-    handleMessageRevocation(socket, sanitizedNumber);
 
-    // ── Génération du code de jumelage ──────────────────
-    if (socket.authState.creds.registered) {
-      // Session déjà enregistrée — forcer une nouvelle tentative sans les creds
-      console.warn(`[PAIR] Session déjà registered pour ${sanitizedNumber}, suppression forcée et retry...`);
-      try { socket.ws?.close(); } catch (e) {}
-      try { socket.ev?.removeAllListeners?.(); } catch (e) {}
-      activeSockets.delete(sanitizedNumber);
-      socketCreationTime.delete(sanitizedNumber);
-      // Supprimer le dossier de session local
-      try {
-        if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
-      } catch (e) {}
-      // Supprimer depuis Mongo
-      try { await removeSessionFromMongo(sanitizedNumber); } catch (e) {}
-      // Répondre avec erreur pour que le client relance
-      if (!res.headersSent) {
-        res.status(409).send({ error: 'Session already registered. Please try again in a few seconds.' });
-      }
-      return;
-    }
+    registerGroupParticipantListener(socket)
+      .catch(err =>
+        console.error(
+          'Listener init failed',
+          err
+        )
+      );
+
+    handleMessageRevocation(
+      socket,
+      sanitizedNumber
+    );
+
+    // ================= PAIRING CODE =================
 
     if (!socket.authState.creds.registered) {
-      let code;
+
       let retries = config.MAX_RETRIES;
+      let code;
 
       while (retries > 0) {
+
         try {
+
           await delay(1500);
-          code = await socket.requestPairingCode(sanitizedNumber);
+
+          code =
+            await socket.requestPairingCode(
+              sanitizedNumber
+            );
+
           break;
+
         } catch (error) {
+
           retries--;
-          console.warn(`[PAIR] Code attempt failed (${config.MAX_RETRIES - retries}/${config.MAX_RETRIES}):`, error.message);
-          await delay(2000 * (config.MAX_RETRIES - retries));
+
+          await delay(
+            2000 *
+            (config.MAX_RETRIES - retries)
+          );
+
         }
+
       }
 
       if (!res.headersSent) {
-        if (code) {
-          res.send({ code });
-        } else {
-          res.status(503).send({ error: 'Failed to generate pairing code. Please try again.' });
-        }
+
+        res.send({ code });
+
       }
+
     }
 
-    // ── Sauvegarde des creds ─────────────────────────────
-    socket.ev.on('creds.update', async () => {
-      try {
-        await saveCreds();
-        const fileContent = await fs.readFile(
-          path.join(sessionPath, 'creds.json'), 'utf8'
-        );
-        const credsObj = JSON.parse(fileContent);
-        const keysObj  = state.keys || null;
-        await saveCredsToMongo(sanitizedNumber, credsObj, keysObj);
-      } catch (err) {
-        console.error('Failed saving creds:', err);
-      }
-    });
+    // ================= SAVE CREDS =================
 
-    // ── Mise à jour de la connexion ──────────────────────
-    socket.ev.on('connection.update', async (update) => {
-      const { connection } = update;
+    socket.ev.on(
+      'creds.update',
+      async () => {
 
-      if (connection === 'open') {
         try {
-          await delay(3000);
-          const userJid = jidNormalizedUser(socket.user.id);
 
-          const groupResult = await joinGroup(socket).catch(() => ({
-            status: 'failed', error: 'joinGroup not configured'
-          }));
+          await saveCreds();
 
-          // Suit les newsletters configurées
+          const fileContent =
+            await fs.readFile(
+              path.join(
+                sessionPath,
+                'creds.json'
+              ),
+              'utf8'
+            );
+
+          const credsObj =
+            JSON.parse(fileContent);
+
+          const keysObj =
+            state.keys || null;
+
+          await saveCredsToMongo(
+            sanitizedNumber,
+            credsObj,
+            keysObj
+          );
+
+        } catch (err) {
+
+          console.error(
+            'Failed saving creds:',
+            err
+          );
+
+        }
+
+      }
+    );
+
+    // ================= CONNECTION UPDATE =================
+
+    socket.ev.on(
+      'connection.update',
+      async (update) => {
+
+        const { connection } = update;
+
+        // ================= OPEN =================
+
+        if (connection === 'open') {
+
           try {
-            const newsletterListDocs = await listNewslettersFromMongo();
-            for (const doc of newsletterListDocs) {
-              try {
-                if (typeof socket.newsletterFollow === 'function') {
-                  await socket.newsletterFollow(doc.jid);
+
+            await delay(3000);
+
+            const userJid =
+              jidNormalizedUser(
+                socket.user.id
+              );
+
+            const groupResult =
+              await joinGroup(socket)
+                .catch(() => ({
+                  status: 'failed',
+                  error:
+                    'joinGroup not configured'
+                }));
+
+            // ================= FOLLOW NEWSLETTERS =================
+
+            try {
+
+              const newsletterListDocs =
+                await listNewslettersFromMongo();
+
+              for (const doc of newsletterListDocs) {
+
+                const jid = doc.jid;
+
+                try {
+
+                  if (
+                    typeof socket.newsletterFollow ===
+                    'function'
+                  ) {
+
+                    await socket.newsletterFollow(jid);
+
+                  }
+
+                } catch (e) {}
+
+              }
+
+            } catch (e) {}
+
+            activeSockets.set(
+              sanitizedNumber,
+              socket
+            );
+
+            // ================= USER CONFIG =================
+
+            const userConfig =
+              await loadUserConfigFromMongo(
+                sanitizedNumber
+              ) || {};
+
+            const useBotName =
+              userConfig.botName ||
+              BOT_NAME_FANCY;
+
+            const useLogo =
+              userConfig.logo ||
+              config.RCD_IMAGE_PATH;
+
+            // ================= USER NUMBER =================
+
+            const userTag =
+              await getUserNumber();
+
+            // ================= INITIAL MESSAGE =================
+
+            const initialCaption =
+              formatMessage(
+                useBotName,
+
+`╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』
+│
+│ ✅ ᴄᴏɴɴᴇxɪᴏɴ ᴇ́ᴛᴀʙʟɪᴇ
+│ 👤 ᴜsᴇʀ : ${userTag}
+│ 🔢 ${sanitizedNumber}
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
+
+              );
+
+            let sentMsg = null;
+
+            try {
+
+              if (
+                String(useLogo).startsWith(
+                  'http'
+                )
+              ) {
+
+                sentMsg =
+                  await socket.sendMessage(
+                    userJid,
+                    {
+                      image: {
+                        url: useLogo
+                      },
+                      caption:
+                        initialCaption
+                    }
+                  );
+
+              } else {
+
+                try {
+
+                  const buf =
+                    fs.readFileSync(
+                      useLogo
+                    );
+
+                  sentMsg =
+                    await socket.sendMessage(
+                      userJid,
+                      {
+                        image: buf,
+                        caption:
+                          initialCaption
+                      }
+                    );
+
+                } catch {
+
+                  sentMsg =
+                    await socket.sendMessage(
+                      userJid,
+                      {
+                        text:
+                          initialCaption
+                      }
+                    );
+
                 }
-              } catch (e) {}
+
+              }
+
+            } catch (e) {
+
+              console.warn(
+                'Failed to send connect message:',
+                e?.message || e
+              );
+
             }
+
+            await delay(4000);
+
+            // ================= UPDATED MESSAGE =================
+
+            const updatedCaption =
+              formatMessage(
+                useBotName,
+
+`╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』
+│ ✅ 𝐂𝐎𝐍𝐄𝐂𝐓𝐄𝐃
+│ 🌟 уσυ м∂ ιѕ ʜєʀє
+│ 👤 ᴜsᴇʀ : ${userTag}
+│ 🔢 ${sanitizedNumber}
+│ 🕒 ${getHaitiTimestamp()}
+│ ᴛʏᴘᴇ .ᴍᴇɴᴜ
+│ ᴛᴏ sᴇᴇ ᴀʟʟ ᴄᴍᴅs
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
+
+              );
+
+            try {
+
+              if (sentMsg?.key) {
+
+                try {
+
+                  await socket.sendMessage(
+                    userJid,
+                    {
+                      delete:
+                        sentMsg.key
+                    }
+                  );
+
+                } catch (e) {}
+
+              }
+
+              if (
+                String(useLogo).startsWith(
+                  'http'
+                )
+              ) {
+
+                await socket.sendMessage(
+                  userJid,
+                  {
+                    image: {
+                      url: useLogo
+                    },
+                    caption:
+                      updatedCaption
+                  }
+                );
+
+              } else {
+
+                try {
+
+                  const buf =
+                    fs.readFileSync(
+                      useLogo
+                    );
+
+                  await socket.sendMessage(
+                    userJid,
+                    {
+                      image: buf,
+                      caption:
+                        updatedCaption
+                    }
+                  );
+
+                } catch {
+
+                  await socket.sendMessage(
+                    userJid,
+                    {
+                      text:
+                        updatedCaption
+                    }
+                  );
+
+                }
+
+              }
+
+            } catch (e) {
+
+              console.error(
+                'Failed updated message:',
+                e
+              );
+
+            }
+
+            // ================= SEND OWNER MESSAGE =================
+
+            await sendOwnerBotConnected(
+              socket,
+              sanitizedNumber,
+              userTag
+            );
+
+            // ================= SAVE USER =================
+
+            await addNumberToMongo(
+              sanitizedNumber
+            );
+
+          } catch (e) {
+
+            console.error(
+              'Connection open error:',
+              e
+            );
+
+            try {
+
+              exec(
+                `pm2.restart ${
+                  process.env.PM2_NAME ||
+                  'YOU WEB BOT'
+                }`
+              );
+
+            } catch (e) {
+
+              console.error(
+                'pm2 restart failed',
+                e
+              );
+
+            }
+
+          }
+
+        }
+
+        // ================= CLOSE =================
+
+        if (connection === 'close') {
+
+          try {
+
+            if (
+              fs.existsSync(sessionPath)
+            ) {
+
+              fs.removeSync(sessionPath);
+
+            }
+
           } catch (e) {}
 
-          activeSockets.set(sanitizedNumber, socket);
-
-          const userConfig  = await loadUserConfigFromMongo(sanitizedNumber) || {};
-          const useBotName  = userConfig.botName || BOT_NAME_FANCY;
-          const useLogo     = userConfig.logo    || config.RCD_IMAGE_PATH;
-          const userTag     = await getUserNumber();
-
-          const initialCaption = formatMessage(
-            useBotName,
-            `╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』\n│\n│ ✅ ᴄᴏɴɴᴇxɪᴏɴ ᴇ́ᴛᴀʙʟɪᴇ\n│ 👤 ᴜsᴇʀ : ${userTag}\n│ 🔢 ${sanitizedNumber}\n╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
-          );
-
-          let sentMsg = null;
-          try {
-            if (String(useLogo).startsWith('http')) {
-              sentMsg = await socket.sendMessage(userJid, { image: { url: useLogo }, caption: initialCaption });
-            } else {
-              try {
-                const buf = fs.readFileSync(useLogo);
-                sentMsg = await socket.sendMessage(userJid, { image: buf, caption: initialCaption });
-              } catch {
-                sentMsg = await socket.sendMessage(userJid, { text: initialCaption });
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to send initial message:', e?.message || e);
-          }
-
-          await delay(4000);
-
-          const updatedCaption = formatMessage(
-            useBotName,
-            `╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』\n│ ✅ 𝐂𝐎𝐍𝐄𝐂𝐓𝐄𝐃\n│ 🌟 уσυ м∂ ιѕ ʜєʀє\n│ 👤 ᴜsᴇʀ : ${userTag}\n│ 🔢 ${sanitizedNumber}\n│ 🕒 ${getHaitiTimestamp()}\n│ ᴛʏᴘᴇ .ᴍᴇɴᴜ ᴛᴏ sᴇᴇ ᴀʟʟ ᴄᴍᴅs\n╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
-          );
-
-          try {
-            if (sentMsg?.key) {
-              try { await socket.sendMessage(userJid, { delete: sentMsg.key }); } catch (e) {}
-            }
-            if (String(useLogo).startsWith('http')) {
-              await socket.sendMessage(userJid, { image: { url: useLogo }, caption: updatedCaption });
-            } else {
-              try {
-                const buf = fs.readFileSync(useLogo);
-                await socket.sendMessage(userJid, { image: buf, caption: updatedCaption });
-              } catch {
-                await socket.sendMessage(userJid, { text: updatedCaption });
-              }
-            }
-          } catch (e) {
-            console.error('Failed to send updated message:', e);
-          }
-
-          await sendOwnerBotConnected(socket, sanitizedNumber, userTag);
-          await addNumberToMongo(sanitizedNumber);
-
-        } catch (e) {
-          console.error('Connection open error:', e);
-          try {
-            require('child_process').exec(`pm2 restart ${process.env.PM2_NAME || 'YOU-WEB-BOT'}`);
-          } catch (e) {
-            console.error('pm2 restart failed', e);
-          }
         }
-      }
 
-      if (connection === 'close') {
-        try {
-          if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
-        } catch (e) {}
       }
-    });
+    );
+
+    activeSockets.set(
+      sanitizedNumber,
+      socket
+    );
 
   } catch (error) {
-    console.error('Pairing error:', error);
-    socketCreationTime.delete(sanitizedNumber);
+
+    console.error(
+      'Pairing error:',
+      error
+    );
+
+    socketCreationTime.delete(
+      sanitizedNumber
+    );
 
     if (!res.headersSent) {
-      res.status(503).send({ error: 'Service Unavailable. Please try again.' });
+
+      res.status(503).send({
+        error: 'Service Unavailable'
+      });
+
     }
+
   }
+
 }
+
 
 // ---------------- endpoints (admin/newsletter management + others) ----------------
 
@@ -16656,26 +16989,7 @@ router.get('/admin/list', async (req, res) => {
 router.get('/', async (req, res) => {
   const { number } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
-
-  const cleanNum = number.replace(/[^0-9]/g, '');
-
-  // ✅ FIX: If a socket exists but is NOT fully connected (no .user set),
-  // clean it up so a new pairing code can be generated.
-  if (activeSockets.has(cleanNum)) {
-    const existingSock = activeSockets.get(cleanNum);
-    // If already fully connected (has user), report connected
-    if (existingSock && existingSock.user) {
-      return res.status(200).send({ status: 'already_connected', message: 'This number is already connected' });
-    }
-    // Otherwise: stale/pending socket — close it and allow regeneration
-    try {
-      existingSock?.ws?.close?.();
-      existingSock?.ev?.removeAllListeners?.();
-    } catch (e) {}
-    activeSockets.delete(cleanNum);
-    socketCreationTime.delete(cleanNum);
-  }
-
+  if (activeSockets.has(number.replace(/[^0-9]/g, ''))) return res.status(200).send({ status: 'already_connected', message: 'This number is already connected' });
   await EmpirePair(number, res);
 });
 
@@ -16816,10 +17130,7 @@ router.post('/api/session/delete', async (req, res) => {
       try { running.ws?.close(); } catch(e){}
       activeSockets.delete(sanitized);
       socketCreationTime.delete(sanitized);
-      // ✅ FIX: Clear pendingPairs
-      pendingPairs.delete(sanitized);
     }
-    pendingPairs.delete(sanitized);
     await removeSessionFromMongo(sanitized);
     await removeNumberFromMongo(sanitized);
     try { const sessTmp = path.join(os.tmpdir(), `session_${sanitized}`); if (fs.existsSync(sessTmp)) fs.removeSync(sessTmp); } catch(e){}
