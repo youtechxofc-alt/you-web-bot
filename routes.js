@@ -166,24 +166,6 @@ function canRequestCode(number) {
 }
 
 /* =========================================
-   CREATE SESSION
-========================================= */
-
-function createSession(number) {
-  const clean        = sanitizeNumber(number);
-  const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-  activeConnections.set(clean, {
-    createdAt: Date.now(),
-    status:    'connected',
-    code:      generatedCode
-  });
-
-  global.pushLog(`✅ Session créée : ${clean}`, 'SUC');
-  return generatedCode;
-}
-
-/* =========================================
    DELETE SESSION COMPLETELY
 ========================================= */
 
@@ -256,7 +238,7 @@ async function deleteSession(number) {
 }
 
 /* =========================================
-   CONNECT SESSION
+   🔥 CONNECT SESSION — REAL BAILEYS PAIRING
 ========================================= */
 
 router.get('/connect', async (req, res) => {
@@ -267,18 +249,113 @@ router.get('/connect', async (req, res) => {
     const cleanNumber = sanitizeNumber(number);
     canRequestCode(cleanNumber);
 
+    // ── Delete existing session first ──
     await deleteSession(cleanNumber);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const generatedCode = createSession(cleanNumber);
-    global.pushLog(`♻️ Nouveau code généré : ${cleanNumber}`, 'INF');
+    // ── Require Baileys ──
+    const {
+      default: makeWASocket,
+      useMultiFileAuthState,
+      DisconnectReason,
+      fetchLatestBaileysVersion
+    } = require('@ryuu-reinzz/baileys');
 
-    return res.status(200).json({
-      ok:     true,
-      status: 'success',
-      code:   generatedCode,
-      number: cleanNumber
+    const sessionDir = path.join(process.cwd(), 'sessions', cleanNumber);
+    await fsExtra.ensureDir(sessionDir);
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: false,
+      logger: require('pino')({ level: 'silent' }),
+      browser: ['YOU-WEB-BOT', 'Chrome', '1.0.0'],
+      // Mandatory for pairing code
+      mobile: false,
     });
+
+    // ── Store socket ──
+    activeSockets.set(cleanNumber, sock);
+    activeConnections.set(cleanNumber, {
+      createdAt: Date.now(),
+      status: 'pairing',
+    });
+
+    // ── Request pairing code ──
+    // Must wait for socket to be ready before requesting
+    let pairingCode = null;
+    let pairingError = null;
+
+    await new Promise((resolve, reject) => {
+      // Timeout after 15 seconds
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout: impossible d\'obtenir le code de pairing'));
+      }, 15000);
+
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (connection === 'open') {
+          clearTimeout(timeout);
+          global.pushLog(`✅ Connecté : ${cleanNumber}`, 'SUC');
+          activeConnections.set(cleanNumber, {
+            createdAt: Date.now(),
+            status: 'connected',
+          });
+          resolve();
+        }
+
+        if (connection === 'close') {
+          clearTimeout(timeout);
+          const reason = lastDisconnect?.error?.output?.statusCode;
+          global.pushLog(`🔴 Connexion fermée (${reason}) : ${cleanNumber}`, 'WRN');
+
+          if (reason === DisconnectReason.loggedOut) {
+            await deleteSession(cleanNumber);
+          }
+          reject(new Error('Connection closed: ' + reason));
+        }
+      });
+
+      sock.ev.on('creds.update', saveCreds);
+
+      // Request pairing code once socket is registered
+      // Baileys requires a small delay before requesting the code
+      setTimeout(async () => {
+        try {
+          const code = await sock.requestPairingCode(cleanNumber);
+          pairingCode = code?.match(/.{1,4}/g)?.join('-') || code;
+          clearTimeout(timeout);
+          global.pushLog(`🔑 Code de pairing généré : ${cleanNumber}`, 'SUC');
+          resolve();
+        } catch (err) {
+          pairingError = err.message;
+          clearTimeout(timeout);
+          reject(new Error('requestPairingCode failed: ' + err.message));
+        }
+      }, 3000);
+    }).catch(err => {
+      pairingError = err.message;
+    });
+
+    if (pairingCode) {
+      return res.status(200).json({
+        ok:     true,
+        status: 'success',
+        code:   pairingCode,
+        number: cleanNumber
+      });
+    } else {
+      // Clean up on failure
+      await deleteSession(cleanNumber);
+      return res.status(500).json({
+        ok:    false,
+        error: pairingError || 'Impossible de générer le code de pairing'
+      });
+    }
 
   } catch (err) {
     global.pushLog('CONNECT ERROR: ' + err.message, 'ERR');
