@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOU WEB BOT</title>
+<link rel="icon" href="https://i.postimg.cc/tgN7HVPg/image.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif;}
+body{
+  background:#050b14;display:flex;justify-content:center;align-items:center;
+  min-height:100vh;color:white;overflow:hidden;
+  background-image:
+    radial-gradient(ellipse at 10% 90%,#00ffa615 0%,transparent 50%),
+    radial-gradient(ellipse at 90% 10%,#00cfff10 0%,transparent 50%),
+    linear-gradient(#00ffa606 1px,transparent 1px),
+    linear-gradient(90deg,#00ffa606 1px,transparent 1px);
+  background-size:100% 100%,100% 100%,40px 40px,40px 40px;
+}
+
+/* MUSIC BTN */
+.music-btn{
+  position:fixed;top:15px;right:15px;
+  width:42px;height:42px;border-radius:12px;
+  background:rgba(10,18,32,.97);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;border:1px solid #00cfff40;
+  transition:.2s;z-index:99;
+}
+.music-btn:hover{border-color:#00cfff;box-shadow:0 0 15px #00cfff30;}
+.music-btn i{color:#00cfff;}
+
+.wrap{
+  width:360px;max-width:95vw;
+  background:rgba(10,18,32,.97);
+  border-radius:28px;padding:28px;
+  border:1px solid #1c2a40;
+  box-shadow:0 0 80px #00ffa610,0 0 40px #00cfff08;
+}
+
+/* PROFILE */
+.profile-wrap{text-align:center;margin-bottom:20px;}
+.profile{
+  width:90px;height:90px;border-radius:20px;margin:0 auto 12px;
+  background:url('https://i.postimg.cc/tgN7HVPg/image.png') center/cover;
+  border:2px solid #00cfff40;
+  box-shadow:0 0 20px #00cfff20;
+}
+.title{
+  font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;
+  background:linear-gradient(90deg,#00cfff,#00ffa6);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  letter-spacing:2px;
+}
+.subtitle{
+  font-size:11px;color:#3a5070;letter-spacing:3px;margin-top:4px;
+}
+
+/* STATUS BAR */
+.status-bar{
+  display:flex;justify-content:space-between;align-items:center;
+  background:#050b14;border:1px solid #1c2a40;
+  border-radius:14px;padding:10px 16px;margin-bottom:20px;
+}
+.status-left{display:flex;align-items:center;gap:8px;font-size:12px;color:#8fa3c1;letter-spacing:1px;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#00ffa6;animation:pulse 1.5s infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+.status-ver{font-size:11px;color:#00cfff;font-family:'Orbitron',sans-serif;letter-spacing:2px;}
+
+/* CARDS */
+.card{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 16px;margin-bottom:10px;
+  border-radius:18px;background:#050b14;
+  cursor:pointer;transition:.2s;
+  border:1px solid #1c2a40;
+}
+.card:hover{background:#0d1a2e;border-color:#00cfff60;transform:translateY(-2px);box-shadow:0 4px 20px #00cfff10;}
+.card-left{display:flex;align-items:center;gap:12px;font-weight:600;font-size:15px;letter-spacing:1px;}
+.icon{
+  width:42px;height:42px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.3);border:1px solid #1c2a40;flex-shrink:0;
+}
+.icon i{font-size:16px;}
+.icon.cyan   i{color:#00cfff;}
+.icon.green  i{color:#00ffa6;}
+.icon.red    i{color:#ff4d6d;}
+.icon.yellow i{color:#ffd64d;}
+.card-arrow{color:#2a3a54;font-size:12px;}
+
+/* BOTTOM GRID */
+.bottom{display:flex;gap:10px;margin-top:4px;}
+.small-card{
+  flex:1;padding:14px 10px;
+  border-radius:18px;background:#050b14;
+  text-align:center;cursor:pointer;transition:.2s;
+  border:1px solid #1c2a40;
+}
+.small-card:hover{background:#0d1a2e;border-color:#00cfff60;transform:translateY(-2px);}
+.small-card i{font-size:18px;margin-bottom:6px;display:block;}
+.small-card div:last-child{font-size:11px;font-weight:600;color:#8fa3c1;letter-spacing:1px;}
+
+.footer{margin-top:18px;font-size:10px;color:#2a3a54;text-align:center;letter-spacing:2px;font-family:'Orbitron',sans-serif;}
+</style>
+</head>
+<body>
+
+<div class="music-btn" onclick="toggleMusic()">
+  <i class="fa-solid fa-music"></i>
+</div>
+
+<div class="wrap">
+
+  <div class="profile-wrap">
+    <div class="profile"></div>
+    <div class="title">YOU WEB BOT</div>
+    <div class="subtitle">PLATEFORME PREMIUM</div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-left">
+      <span class="status-dot"></span>
+      WEB SECURED
+    </div>
+    <div class="status-ver">V1.0</div>
+  </div>
+
+  <!-- PAIR CODE -->
+  <div class="card" onclick="goTo('pair')">
+    <div class="card-left">
+      <div class="icon cyan"><i class="fa-solid fa-key"></i></div>
+      PAIR CODE
+    </div>
+    <span class="card-arrow">›</span>
+  </div>
+
+  <!-- QR CODE -->
+  <div class="card" onclick="goTo('qr')">
+    <div class="card-left">
+      <div class="icon green"><i class="fa-solid fa-qrcode"></i></div>
+      QR CODE
+    </div>
+    <span class="card-arrow">›</span>
+  </div>
+
+  <!-- DISCONNECT -->
+  <div class="card" onclick="goTo('disconnect')">
+    <div class="card-left">
+      <div class="icon red"><i class="fa-solid fa-power-off"></i></div>
+      DISCONNECT CODE
+    </div>
+    <span class="card-arrow">›</span>
+  </div>
+
+  <!-- BOT LOGS -->
+  <div class="card" onclick="goTo('logs')">
+    <div class="card-left">
+      <div class="icon yellow"><i class="fa-solid fa-terminal"></i></div>
+      BOT LOGS
+    </div>
+    <span class="card-arrow">›</span>
+  </div>
+
+  <!-- SOCIAL -->
+  <div class="bottom">
+    <div class="small-card" onclick="openLink('ig')">
+      <i class="fa-brands fa-instagram" style="color:#e1306c"></i>
+      <div>INSTAGRAM</div>
+    </div>
+    <div class="small-card" onclick="openLink('wa')">
+      <i class="fa-brands fa-whatsapp" style="color:#25d366"></i>
+      <div>CHANNEL</div>
+    </div>
+    <div class="small-card" onclick="openLink('gr')">
+      <i class="fa-solid fa-users" style="color:#00cfff"></i>
+      <div>GROUP</div>
+    </div>
+  </div>
+
+  <div class="footer">YOU WEB BOT © 2026</div>
+</div>
+
+<script>
+let music = new Audio("https://files.catbox.moe/fk4hdm.mp3");
+music.loop = true; music.volume = 0.5;
+function toggleMusic(){ music.paused ? music.play() : music.pause(); }
+
+const sounds = {
+  pair:       "https://files.catbox.moe/l5ea0h.mp3",
+  qr:         "https://files.catbox.moe/l5ea0h.mp3",
+  disconnect: "https://files.catbox.moe/5zrtrx.mp3",
+  logs:       "https://files.catbox.moe/l5ea0h.mp3",
+  ig:         "https://files.catbox.moe/l5ea0h.mp3",
+  wa:         "https://files.catbox.moe/nsh24s.mp3",
+  gr:         "https://files.catbox.moe/xgdtf4.mp3"
+};
+
+function goTo(type){
+  new Audio(sounds[type]).play();
+  setTimeout(()=>{
+    if(type==='pair')       window.location.href='/pair';
+    if(type==='qr')         window.location.href='/qr';
+    if(type==='disconnect') window.location.href='/disconnect';
+    if(type==='logs')       window.location.href='/logs';
+  },400);
+}
+
+function openLink(type){
+  new Audio(sounds[type]).play();
+  setTimeout(()=>{
+    if(type==='ig') window.open('https://www.instagram.com/siddharths.khoana?igsh=enZyZmhrZmt2ZnVh','_blank');
+    if(type==='wa') window.open('https://whatsapp.com/channel/0029VbCtUug4o7qTFq7fpX1W','_blank');
+    if(type==='gr') window.open('https://chat.whatsapp.com/JXGgcBzSJjCKzgfjzfqU7J','_blank');
+  },400);
+}
+</script>
+</body>
+</html>

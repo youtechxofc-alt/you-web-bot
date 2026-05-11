@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR CODE — YOU WEB BOT</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;600&display=swap');
+*{ margin:0; padding:0; box-sizing:border-box; font-family:'Rajdhani',sans-serif; }
+body{
+  background:#050b14;
+  display:flex; justify-content:center; align-items:center; min-height:100vh; color:white;
+  background-image:
+    radial-gradient(ellipse at 10% 90%,#00ffa615 0%,transparent 50%),
+    radial-gradient(ellipse at 90% 10%,#00cfff10 0%,transparent 50%),
+    linear-gradient(#00ffa606 1px,transparent 1px),
+    linear-gradient(90deg,#00ffa606 1px,transparent 1px);
+  background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+}
+.wrap{
+  width:400px; max-width:95vw;
+  background:rgba(10,18,32,.97);
+  border-radius:28px; padding:28px;
+  border:1px solid #1c2a40;
+  box-shadow: 0 0 80px #00ffa610, 0 0 40px #00cfff08;
+}
+.header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+.title{
+  font-family:'Orbitron',sans-serif; font-size:13px; font-weight:700; letter-spacing:3px;
+  background:linear-gradient(90deg,#00ffa6,#00cfff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.logo{ width:52px; height:52px; border-radius:14px; border:2px solid #00ffa640; object-fit:cover; }
+.qr-wrap{
+  border:1px solid #1c2a40; border-radius:20px;
+  padding:20px; text-align:center; background:#050b14;
+  margin-bottom:16px; position:relative;
+}
+.qr-frame{
+  position:relative; display:inline-block;
+  border:2px solid #00ffa640; border-radius:16px; padding:10px;
+}
+.qr-corner{ position:absolute; width:22px; height:22px; }
+.qr-corner.tl{ top:-1px; left:-1px; border-top:3px solid #00ffa6; border-left:3px solid #00ffa6; border-radius:4px 0 0 0; }
+.qr-corner.tr{ top:-1px; right:-1px; border-top:3px solid #00ffa6; border-right:3px solid #00ffa6; border-radius:0 4px 0 0; }
+.qr-corner.bl{ bottom:-1px; left:-1px; border-bottom:3px solid #00ffa6; border-left:3px solid #00ffa6; border-radius:0 0 0 4px; }
+.qr-corner.br{ bottom:-1px; right:-1px; border-bottom:3px solid #00ffa6; border-right:3px solid #00ffa6; border-radius:0 0 4px 0; }
+.scan-anim{
+  position:absolute; left:10px; right:10px; height:2px; z-index:5;
+  background:linear-gradient(90deg,transparent,#00ffa6,transparent);
+  animation:scan 2s linear infinite;
+  border-radius:2px; pointer-events:none; display:none;
+}
+@keyframes scan{ 0%{ top:10px; opacity:1; } 100%{ top:calc(100% - 12px); opacity:.3; } }
+.qr-box{
+  width:210px; height:210px; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  background:#0a1220; overflow:hidden; position:relative;
+}
+#qrImage{
+  width:210px; height:210px; border-radius:8px;
+  display:none; object-fit:contain;
+}
+#qrPlaceholder{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+}
+.spin-ring{
+  width:48px; height:48px; border-radius:50%;
+  border:3px solid #1c2a40; border-top-color:#00ffa6;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg); } }
+#placeholderText{ font-size:11px; color:#3a5070; letter-spacing:1.5px; }
+.badge{
+  display:none; margin-top:14px;
+  align-items:center; justify-content:center; gap:6px;
+  font-size:11px; letter-spacing:1px; color:#00ffa6;
+  background:#00ffa610; border:1px solid #00ffa630;
+  border-radius:20px; padding:6px 16px;
+}
+.badge-dot{ width:7px; height:7px; border-radius:50%; background:#00ffa6; animation:pulse 1.5s infinite; }
+@keyframes pulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.4; transform:scale(.8); } }
+.timer{ font-size:12px; color:#8fa3c1; margin-top:10px; letter-spacing:1px; }
+#countdown{ color:#00cfff; font-family:'Orbitron',sans-serif; font-weight:700; }
+.alert{
+  display:none; margin-bottom:14px; border-radius:12px; padding:10px 16px;
+  font-size:12px; letter-spacing:1px; text-align:center;
+}
+.alert.error{ background:#ff4d6d15; border:1px solid #ff4d6d40; color:#ff4d6d; }
+.alert.success{ background:#00ffa615; border:1px solid #00ffa640; color:#00ffa6; }
+.steps{
+  background:#050b14; border:1px solid #1c2a40; border-radius:16px;
+  padding:14px; margin-bottom:16px;
+}
+.step{ display:flex; align-items:center; gap:10px; padding:7px 0; }
+.step:not(:last-child){ border-bottom:1px solid #1c2a4060; }
+.step-num{
+  width:26px; height:26px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,#00ffa6,#00cfff);
+  color:#050b14; font-weight:700; font-size:12px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Orbitron',sans-serif;
+}
+.step-txt{ font-size:13px; color:#c5d5e8; letter-spacing:.4px; }
+.actions{ display:flex; gap:10px; }
+button{
+  flex:1; padding:13px; border:none; border-radius:14px; cursor:pointer;
+  font-weight:700; font-size:13px; letter-spacing:1px;
+  font-family:'Rajdhani',sans-serif; transition:all .25s;
+}
+.btn-back{ background:rgba(255,255,255,.06); color:#8fa3c1; border:1px solid #1c2a40; }
+.btn-back:hover{ background:rgba(255,255,255,.1); }
+.btn-refresh{ background:linear-gradient(135deg,#00ffa6,#00cfff); color:#050b14; }
+.btn-refresh:hover{ opacity:.88; box-shadow:0 4px 20px #00ffa640; }
+.btn-refresh:disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+.footer{ margin-top:16px; font-size:10px; color:#2a3a54; text-align:center; letter-spacing:2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div>
+      <div class="title">YOU WEB BOT</div>
+      <div style="font-size:11px;color:#3a5070;letter-spacing:2px;margin-top:3px;">QR CODE PAIRING</div>
+    </div>
+    <img src="https://i.postimg.cc/tgN7HVPg/image.png" class="logo" onerror="this.style.background='#1c2a40'">
+  </div>
+
+  <div class="alert" id="alert"></div>
+
+  <div class="qr-wrap">
+    <div class="qr-frame">
+      <div class="qr-corner tl"></div>
+      <div class="qr-corner tr"></div>
+      <div class="qr-corner bl"></div>
+      <div class="qr-corner br"></div>
+      <div class="scan-anim" id="scanAnim"></div>
+      <div class="qr-box">
+        <div id="qrPlaceholder">
+          <div class="spin-ring"></div>
+          <span id="placeholderText">GÉNÉRATION QR...</span>
+        </div>
+        <img id="qrImage" alt="QR Code">
+      </div>
+    </div>
+    <div class="badge" id="badge">
+      <span class="badge-dot"></span>
+      QR CODE ACTIF — SCANNEZ MAINTENANT
+    </div>
+    <div class="timer">Actualisation dans <span id="countdown">30</span>s</div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-txt">Ouvrez WhatsApp sur votre téléphone</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-txt">⋯ Menu → Appareils liés → Lier un appareil</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-txt">Scannez ce code QR avec votre téléphone</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-back" onclick="window.location.href='/'">⬅ Retour</button>
+    <button class="btn-refresh" id="refreshBtn" onclick="manualRefresh()">🔄 Nouveau QR</button>
+  </div>
+
+  <div class="footer">YOU WEB BOT — SECURE QR PAIRING SYSTEM</div>
+</div>
+
+<script>
+let countdown = 30;
+let countdownTimer = null;
+let pollTimer = null;
+let isLoading = false;
+let lastQR = '';
+let connected = false;
+
+const qrImage       = document.getElementById('qrImage');
+const placeholder   = document.getElementById('qrPlaceholder');
+const placeholderTxt= document.getElementById('placeholderText');
+const badge         = document.getElementById('badge');
+const scanAnim      = document.getElementById('scanAnim');
+const cdEl          = document.getElementById('countdown');
+const refreshBtn    = document.getElementById('refreshBtn');
+const alertEl       = document.getElementById('alert');
+
+function showAlert(msg, type) {
+  alertEl.textContent = msg;
+  alertEl.className = 'alert ' + type;
+  alertEl.style.display = 'block';
+  setTimeout(() => { alertEl.style.display = 'none'; }, 5000);
+}
+
+function showLoading(text) {
+  isLoading = true;
+  refreshBtn.disabled = true;
+  placeholder.style.display = 'flex';
+  placeholder.querySelector('.spin-ring').style.display = 'block';
+  placeholderTxt.textContent = text || 'GÉNÉRATION QR...';
+  qrImage.style.display = 'none';
+  badge.style.display = 'none';
+  scanAnim.style.display = 'none';
+}
+
+function showQR(src) {
+  isLoading = false;
+  refreshBtn.disabled = false;
+  lastQR = src;
+  qrImage.src = src;
+  qrImage.style.display = 'block';
+  placeholder.style.display = 'none';
+  badge.style.display = 'flex';
+  scanAnim.style.display = 'block';
+}
+
+function showConnected() {
+  connected = true;
+  clearInterval(pollTimer);
+  clearInterval(countdownTimer);
+  refreshBtn.disabled = true;
+  placeholder.style.display = 'flex';
+  placeholder.querySelector('.spin-ring').style.display = 'none';
+  placeholderTxt.textContent = '✅ CONNECTÉ !';
+  qrImage.style.display = 'none';
+  badge.style.display = 'none';
+  scanAnim.style.display = 'none';
+  showAlert('✅ Connexion réussie ! Bot actif.', 'success');
+}
+
+function showError(text) {
+  isLoading = false;
+  refreshBtn.disabled = false;
+  placeholder.style.display = 'flex';
+  placeholder.querySelector('.spin-ring').style.display = 'none';
+  placeholderTxt.textContent = text || 'ERREUR — RÉESSAYER';
+  qrImage.style.display = 'none';
+  badge.style.display = 'none';
+  scanAnim.style.display = 'none';
+}
+
+async function pollQR() {
+  if (connected) return;
+  try {
+    const r = await fetch('/qr-data?t=' + Date.now());
+    if (!r.ok) { if (!lastQR) showError('SERVEUR HORS LIGNE'); return; }
+    const d = await r.json();
+    if (d.connected) { showConnected(); return; }
+    if (d.qr && d.qr !== lastQR) { showQR(d.qr); resetCountdown(); return; }
+    if (!d.qr && !lastQR) {
+      placeholder.style.display = 'flex';
+      placeholder.querySelector('.spin-ring').style.display = 'block';
+      placeholderTxt.textContent = 'GÉNÉRATION QR...';
+    }
+  } catch (e) {
+    if (!lastQR) showError('CONNEXION IMPOSSIBLE');
+  }
+}
+
+function resetCountdown() {
+  countdown = 30;
+  cdEl.textContent = countdown;
+}
+
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    countdown--;
+    cdEl.textContent = countdown;
+    if (countdown <= 0) { resetCountdown(); manualRefresh(); }
+  }, 1000);
+}
+
+async function manualRefresh() {
+  if (isLoading || connected) return;
+  showLoading('ACTUALISATION...');
+  lastQR = '';
+  resetCountdown();
+  try {
+    await fetch('/qr-refresh', { method: 'POST' });
+  } catch (e) {}
+  setTimeout(pollQR, 3000);
+}
+
+// Init
+showLoading();
+pollTimer = setInterval(pollQR, 2000);
+setTimeout(pollQR, 800);
+startCountdown();
+</script>
+</body>
+</html>

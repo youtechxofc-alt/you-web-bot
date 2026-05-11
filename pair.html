@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PAIR CODE — YOU WEB BOT</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif;}
+body{
+  background:#050b14;display:flex;justify-content:center;align-items:center;
+  min-height:100vh;color:white;
+  background-image:
+    radial-gradient(ellipse at 10% 90%,#00cfff15 0%,transparent 50%),
+    radial-gradient(ellipse at 90% 10%,#00ffa610 0%,transparent 50%),
+    linear-gradient(#00cfff06 1px,transparent 1px),
+    linear-gradient(90deg,#00cfff06 1px,transparent 1px);
+  background-size:100% 100%,100% 100%,40px 40px,40px 40px;
+}
+.wrap{
+  width:380px;max-width:95vw;
+  background:rgba(10,18,32,.97);
+  border-radius:28px;padding:28px;
+  border:1px solid #1c2a40;
+  box-shadow:0 0 80px #00cfff10,0 0 40px #00ffa608;
+}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;}
+.title{
+  font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;letter-spacing:3px;
+  background:linear-gradient(90deg,#00cfff,#00ffa6);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.logo{width:52px;height:52px;border-radius:14px;border:2px solid #00cfff40;object-fit:cover;}
+
+/* INPUT AREA */
+.input-wrap{
+  background:#050b14;border:1px solid #1c2a40;border-radius:20px;
+  padding:20px;margin-bottom:16px;
+}
+.input-label{
+  font-size:11px;letter-spacing:2px;color:#3a5070;margin-bottom:10px;
+  font-family:'Orbitron',sans-serif;
+}
+.input-row{
+  display:flex;gap:10px;align-items:center;
+}
+input[type=number]{
+  flex:1;padding:13px 16px;
+  background:rgba(0,0,0,0.4);
+  border:1px solid #1c2a40;
+  border-radius:14px;color:white;
+  font-family:'Rajdhani',sans-serif;
+  font-size:15px;letter-spacing:1px;
+  outline:none;transition:.2s;
+}
+input[type=number]:focus{
+  border-color:#00cfff60;
+  box-shadow:0 0 15px #00cfff15;
+}
+input[type=number]::placeholder{color:#3a5070;}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;}
+
+.btn-get{
+  padding:13px 18px;
+  background:linear-gradient(135deg,#00cfff,#00ffa6);
+  border:none;border-radius:14px;
+  color:#050b14;font-weight:700;font-size:13px;
+  letter-spacing:1px;cursor:pointer;
+  font-family:'Rajdhani',sans-serif;
+  transition:all .25s;white-space:nowrap;
+}
+.btn-get:hover{opacity:.85;box-shadow:0 4px 20px #00cfff40;}
+.btn-get:disabled{opacity:.4;cursor:not-allowed;}
+
+/* CODE DISPLAY */
+.code-wrap{
+  background:#050b14;border:1px solid #1c2a40;border-radius:20px;
+  padding:20px;text-align:center;margin-bottom:16px;
+  min-height:100px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  position:relative;overflow:hidden;
+}
+.code-wrap::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,#00cfff05,transparent 60%,#00ffa605);
+  pointer-events:none;
+}
+.code-idle{font-size:12px;color:#2a3a54;letter-spacing:2px;font-family:'Orbitron',sans-serif;}
+
+.code-loading{
+  display:flex;gap:8px;align-items:center;
+}
+.dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#00cfff;
+  animation:bounce .8s infinite;
+}
+.dot:nth-child(2){animation-delay:.15s;}
+.dot:nth-child(3){animation-delay:.3s;}
+@keyframes bounce{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-6px);opacity:1}}
+
+.code-value{
+  font-family:'Orbitron',sans-serif;
+  font-size:2rem;font-weight:700;
+  letter-spacing:6px;
+  background:linear-gradient(90deg,#00cfff,#00ffa6);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  animation:glow 2s ease-in-out infinite alternate;
+}
+@keyframes glow{
+  from{filter:drop-shadow(0 0 5px #00cfff80);}
+  to{filter:drop-shadow(0 0 15px #00ffa680);}
+}
+
+.badge{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:11px;letter-spacing:1px;color:#00cfff;
+  background:#00cfff10;border:1px solid #00cfff30;
+  border-radius:20px;padding:5px 14px;margin-top:12px;
+}
+.badge-dot{width:7px;height:7px;border-radius:50%;background:#00cfff;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+
+.code-error{color:#ff4d6d;font-size:13px;letter-spacing:1px;}
+
+/* STEPS */
+.steps{
+  background:#050b14;border:1px solid #1c2a40;border-radius:16px;
+  padding:14px;margin-bottom:16px;
+}
+.step{display:flex;align-items:center;gap:10px;padding:6px 0;}
+.step:not(:last-child){border-bottom:1px solid #1c2a4060;}
+.step-num{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#00cfff,#00ffa6);
+  color:#050b14;font-weight:700;font-size:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Orbitron',sans-serif;
+}
+.step-txt{font-size:13px;color:#c5d5e8;letter-spacing:.5px;}
+
+/* ACTIONS */
+.actions{display:flex;gap:10px;}
+button{
+  flex:1;padding:13px;border:none;border-radius:14px;
+  cursor:pointer;font-weight:700;font-size:13px;letter-spacing:1px;
+  font-family:'Rajdhani',sans-serif;transition:all .25s;
+}
+.btn-back{background:rgba(255,255,255,.06);color:#8fa3c1;border:1px solid #1c2a40;}
+.btn-back:hover{background:rgba(255,255,255,.1);}
+.btn-copy{
+  background:linear-gradient(135deg,#00cfff,#00ffa6);
+  color:#050b14;display:none;
+}
+.btn-copy:hover{opacity:.88;box-shadow:0 4px 20px #00cfff40;}
+
+.footer{margin-top:16px;font-size:10px;color:#2a3a54;text-align:center;letter-spacing:2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <div>
+      <div class="title">YOU WEB BOT</div>
+      <div style="font-size:11px;color:#3a5070;letter-spacing:2px;margin-top:2px;">PAIR CODE</div>
+    </div>
+    <img src="https://i.postimg.cc/tgN7HVPg/image.png" class="logo">
+  </div>
+
+  <!-- INPUT -->
+  <div class="input-wrap">
+    <div class="input-label">NUMÉRO DE TÉLÉPHONE</div>
+    <div class="input-row">
+      <input type="number" id="number" placeholder="Ex: 2250XXXXXXXXX">
+      <button class="btn-get" id="submitBtn" onclick="getCode()">▶ GET</button>
+    </div>
+  </div>
+
+  <!-- CODE OUTPUT -->
+  <div class="code-wrap" id="codeWrap">
+    <div class="code-idle" id="idleMsg">EN ATTENTE DU NUMÉRO...</div>
+  </div>
+
+  <!-- STEPS -->
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-txt">Entrez votre numéro avec indicatif pays</div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-txt">Copiez le code généré</div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-txt">WhatsApp → Appareils liés → Avec code</div>
+    </div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="actions">
+    <button class="btn-back" onclick="window.location.href='/'">⬅ Retour</button>
+    <button class="btn-copy" id="copyBtn" onclick="copyCode()">📋 Copier le code</button>
+  </div>
+
+  <div class="footer">YOU WEB BOT — SECURE PAIR CODE SYSTEM</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+<script>
+let savedCode = "";
+
+async function getCode() {
+  const num = document.getElementById('number').value.trim();
+  if (!num) return;
+
+  const wrap = document.getElementById('codeWrap');
+  const copyBtn = document.getElementById('copyBtn');
+  const submitBtn = document.getElementById('submitBtn');
+
+  copyBtn.style.display = 'none';
+  submitBtn.disabled = true;
+
+  wrap.innerHTML = `<div class="code-loading">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>`;
+
+  try {
+    const { data } = await axios.get(`/code?number=${num}`);
+
+    if (data.code) {
+      savedCode = data.code;
+      const fmt = data.code.match(/.{1,4}/g).join('-');
+      wrap.innerHTML = `
+        <div class="code-value">${fmt}</div>
+        <div class="badge"><span class="badge-dot"></span>CODE ACTIF</div>
+      `;
+      copyBtn.style.display = 'block';
+    } else {
+      wrap.innerHTML = `<div class="code-error">❌ Aucun code reçu</div>`;
+    }
+  } catch(e) {
+    wrap.innerHTML = `<div class="code-error">❌ Erreur de connexion</div>`;
+  }
+
+  submitBtn.disabled = false;
+}
+
+function copyCode() {
+  if (!savedCode) return;
+  navigator.clipboard.writeText(savedCode);
+  const btn = document.getElementById('copyBtn');
+  btn.innerText = '✔ Copié !';
+  setTimeout(() => btn.innerText = '📋 Copier le code', 2000);
+}
+
+document.getElementById('number').addEventListener('keydown', e => {
+  if (e.key === 'Enter') getCode();
+});
+</script>
+</body>
+</html>
