@@ -70,7 +70,7 @@ process.on('exit', () => {
 // ---------------- CONFIG ----------------
 
 // main.js (ou handlers.js)
-const BOT_NAME_FANCY = '𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 𝐈𝐒 𝐎𝐍𝐋𝐈𝐍𝐄 🎠';
+const BOT_NAME_FANCY = '𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 𝐈𝐒 𝐎𝐍𝐋𝐈𝐍𝐄 ✅';
 
 
   // en haut de mongo_utils.js (ou ton helper)
@@ -81,13 +81,15 @@ const DEFAULT_SESSION_CONFIG = {
   AUTO_LIKE_EMOJI: ['🌛','💕','💀','👑','🇺🇸','❤️‍🩹','🎠','⚡','🌙','❤️'],
   PREFIX: '.',
   AUTO_ONLINE: false,
-  ANTI_TAG_MODE: true
+  ANTI_TAG_MODE: true,
+  ENABLE_WELCOME: true,
+  ENABLE_GOODBYE: true
 };
 const config = {
   MAX_RETRIES: 20,
   GROUP_INVITE_LINK: [
-  'https://chat.whatsapp.com/JccgzwmWnAO78lLFZfZneE',
-  'https://chat.whatsapp.com/IhHcItC8EtT3s96aYRZVIl',
+  'https://chat.whatsapp.com/JXGgcBzSJjCKzgfjzfqU7J',
+  'https://chat.whatsapp.com/IZipHGDTShD7eQnbMHhNFal',
 ],
   RCD_IMAGE_PATH: 'https://files.catbox.moe/aq3wpt.jpeg',
   NEWSLETTER_JIDS: [
@@ -97,8 +99,8 @@ const config = {
   '120363426341519710@newsletter',
 ],
   OTP_EXPIRY: 300000,
-  OWNER_NUMBER: process.env.OWNER_NUMBER || '50941319791',
-  PREMIUM:'50941319791@s.whatsapp.net',
+  OWNER_NUMBER: process.env.OWNER_NUMBER || '56967395519',
+  PREMIUM:'56967395519@s.whatsapp.net',
   CHANNEL_LINKS: [
   'https://whatsapp.com/channel/0029VbCtUug4o7qTFq7fpX1W',
 ],
@@ -16137,7 +16139,6 @@ case 'botstat': {
   });
 }
 
-
 // ---------------- message handlers ----------------
 
 function setupMessageHandlers(socket) {
@@ -17183,187 +17184,4 @@ process.on('uncaughtException', (err) => {
 initMongo().catch(err => console.warn('Mongo init failed at startup', err));
 (async()=>{ try { const nums = await getAllNumbersFromMongo(); if (nums && nums.length) { for (const n of nums) { if (!activeSockets.has(n)) { const mockRes = { headersSent:false, send:()=>{}, status:()=>mockRes }; await EmpirePair(n, mockRes); await delay(500); } } } } catch(e){} })();
 
-// ============================================================
-// QR ROUTES FIX — Ajouter ces routes dans pair.js
-// Remplacer tout le bloc QR existant (startQRSession + routes)
-// par ce code ci-dessous
-// ============================================================
-
-// Variables globales QR
-if (!global.latestQRData)   global.latestQRData   = null;
-if (!global.qrSocket)       global.qrSocket       = null;
-if (!global.qrConnected)    global.qrConnected    = false;
-if (!global.qrStarting)     global.qrStarting     = false;
-
-// ── Démarre une session QR propre ──────────────────────────
-async function startQRSession() {
-  if (global.qrStarting) return;
-  global.qrStarting = true;
-
-  try {
-    // Ferme l'ancienne socket QR proprement
-    if (global.qrSocket) {
-      try { global.qrSocket.ws?.close(); } catch {}
-      try { global.qrSocket.ev?.removeAllListeners?.(); } catch {}
-      global.qrSocket = null;
-    }
-
-    global.latestQRData = null;
-    global.qrConnected  = false;
-
-    const qrSessionPath = path.join(os.tmpdir(), 'session_qr_temp');
-    await fs.ensureDir(qrSessionPath);
-
-    const { state, saveCreds } = await useMultiFileAuthState(qrSessionPath);
-    const logger = pino({ level: 'fatal' });
-
-    const sock = makeWASocket({
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger)
-      },
-      printQRInTerminal: false,
-      logger,
-      browser: ['Ubuntu', 'Chrome', '20.0.04'],
-      connectTimeoutMs: 60000,
-    });
-
-    global.qrSocket = sock;
-
-    sock.ev.on('connection.update', async (update) => {
-      const { qr, connection } = update;
-
-      if (qr) {
-        try {
-          const QRCode = require('qrcode');
-          global.latestQRData = await QRCode.toDataURL(qr, {
-            width: 300,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' }
-          });
-          console.log('✅ QR Code généré');
-        } catch (e) {
-          console.error('QR toDataURL error:', e);
-        }
-      }
-
-      if (connection === 'open') {
-        global.qrConnected  = true;
-        global.latestQRData = null;
-        global.qrSocket     = null;
-        global.qrStarting   = false;
-        console.log('✅ QR Session connectée');
-      }
-
-      if (connection === 'close') {
-        global.latestQRData = null;
-        global.qrSocket     = null;
-        global.qrStarting   = false;
-        // ✅ FIX: Auto-redémarre le QR si pas encore connecté
-        if (!global.qrConnected) {
-          console.log('[QR] Session fermée, redémarrage dans 3s...');
-          try {
-            const qrSessionPath2 = path.join(os.tmpdir(), 'session_qr_temp');
-            if (fs.existsSync(qrSessionPath2)) fs.removeSync(qrSessionPath2);
-          } catch (e) {}
-          setTimeout(() => startQRSession(), 3000);
-        }
-      }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-
-  } catch (e) {
-    console.error('startQRSession ERROR:', e);
-    global.qrSocket   = null;
-    global.qrStarting = false;
-  }
-}
-
-// ── ROUTE: Page QR HTML ─────────────────────────────────────
-// GET /qr-page → sert qr.html
-router.get('/qr-page', (req, res) => {
-  const htmlPath = path.join(__dirname, 'qr.html');
-  if (!require('fs').existsSync(htmlPath)) {
-    return res.status(404).send('qr.html introuvable');
-  }
-  res.sendFile(htmlPath);
-});
-
-// ── ROUTE: Données QR en JSON (pour le polling) ─────────────
-// GET /qr-data → { qr: "data:image/png;base64,..." } ou { connected: true } ou {}
-router.get('/qr-data', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-
-  // Démarre la session QR si pas active
-  if (!global.qrSocket && !global.qrStarting && !global.qrConnected) {
-    startQRSession();
-  }
-
-  if (global.qrConnected) {
-    return res.json({ connected: true });
-  }
-
-  if (global.latestQRData) {
-    return res.json({ qr: global.latestQRData });
-  }
-
-  // Pas encore prêt
-  return res.json({ waiting: true });
-});
-
-// ── ROUTE: Rafraîchir le QR (restart session) ───────────────
-// POST /qr-refresh
-router.post('/qr-refresh', async (req, res) => {
-  global.qrConnected = false;
-  global.qrStarting  = false;
-
-  if (global.qrSocket) {
-    try { global.qrSocket.ws?.close(); } catch {}
-    try { global.qrSocket.ev?.removeAllListeners?.(); } catch {}
-    global.qrSocket = null;
-  }
-
-  global.latestQRData = null;
-
-  setTimeout(() => startQRSession(), 500);
-  res.json({ ok: true, message: 'QR session restarted' });
-});
-
-// ── ROUTE: Image QR PNG directe (fallback) ─────────────────
-// GET /qr-image → image PNG
-router.get('/qr-image', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-
-  if (!global.qrSocket && !global.qrStarting) {
-    startQRSession();
-  }
-
-  // Attendre max 12s
-  let waited = 0;
-  while (!global.latestQRData && waited < 12000) {
-    await new Promise(r => setTimeout(r, 300));
-    waited += 300;
-  }
-
-  if (!global.latestQRData) {
-    res.setHeader('Content-Type', 'image/svg+xml');
-    return res.send(
-      `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">` +
-      `<rect width="200" height="200" rx="10" fill="#050b14"/>` +
-      `<text x="100" y="90" font-family="monospace" font-size="12" fill="#00ffa6" text-anchor="middle">QR en cours...</text>` +
-      `<text x="100" y="115" font-family="monospace" font-size="10" fill="#3a5070" text-anchor="middle">Patientez quelques secondes</text>` +
-      `</svg>`
-    );
-  }
-
-  const base64Data = global.latestQRData.replace(/^data:image\/png;base64,/, '');
-  const imgBuffer  = Buffer.from(base64Data, 'base64');
-  res.setHeader('Content-Type', 'image/png');
-  return res.send(imgBuffer);
-});
-
-// ── Démarre QR au boot ──────────────────────────────────────
-startQRSession();
-// =============================================
 module.exports = router;
