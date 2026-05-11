@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YOU WEB BOT — Admin Panel</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;600&display=swap');
+
+:root{
+  --bg:#050b14;
+  --card:#0a1220;
+  --accent:#00ffa6;
+  --accent2:#00cfff;
+  --muted:#8fa3c1;
+  --danger:#ff4d6d;
+  --border:#1c2a40;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif;}
+
+body{
+  background:var(--bg);
+  display:flex;justify-content:center;align-items:center;
+  min-height:100vh;color:white;
+  background-image:
+    radial-gradient(ellipse at 20% 50%,#00ffa615 0%,transparent 60%),
+    radial-gradient(ellipse at 80% 20%,#00cfff10 0%,transparent 50%),
+    linear-gradient(var(--accent)06 1px,transparent 1px),
+    linear-gradient(90deg,var(--accent)06 1px,transparent 1px);
+  background-size:100% 100%,100% 100%,40px 40px,40px 40px;
+}
+
+.wrap{
+  width:460px;max-width:95vw;
+  background:rgba(10,18,32,.95);
+  border-radius:24px;padding:28px;
+  border:1px solid var(--border);
+  box-shadow:0 0 60px #00ffa615,0 0 120px #00cfff08;
+  backdrop-filter:blur(20px);
+}
+
+/* HEADER */
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+
+.logo-area{display:flex;align-items:center;gap:12px;}
+.logo{width:50px;height:50px;border-radius:12px;border:2px solid var(--accent);object-fit:cover;}
+.brand{display:flex;flex-direction:column;}
+.brand-name{
+  font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:2px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.brand-sub{font-size:11px;color:var(--muted);letter-spacing:1px;}
+
+.status-dot{
+  width:10px;height:10px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 10px var(--accent);
+  animation:pulse 2s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* TITLE */
+.section-title{
+  font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:3px;
+  color:var(--muted);margin-bottom:10px;text-transform:uppercase;
+}
+
+/* INPUT */
+.input-wrap{position:relative;margin-bottom:14px;}
+.input-icon{
+  position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font-size:16px;pointer-events:none;
+}
+.input{
+  width:100%;padding:14px 14px 14px 44px;
+  border-radius:14px;border:1px solid var(--border);
+  background:#050b14;color:white;outline:none;font-size:15px;
+  font-family:'Rajdhani',sans-serif;letter-spacing:1px;
+  transition:border-color .3s,box-shadow .3s;
+}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)20;}
+.input::placeholder{color:#3a5070;}
+
+/* BUTTONS */
+.row{display:flex;gap:10px;margin-bottom:16px;}
+
+button{
+  flex:1;padding:13px;border:none;border-radius:14px;
+  cursor:pointer;font-weight:700;font-size:13px;letter-spacing:1px;
+  font-family:'Rajdhani',sans-serif;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .25s;
+}
+
+.btn-check{
+  background:rgba(0,255,166,.08);color:var(--accent);
+  border:1px solid var(--accent)40;
+}
+.btn-check:hover{background:rgba(0,255,166,.18);box-shadow:0 0 20px var(--accent)20;}
+
+.btn-delete{
+  background:linear-gradient(135deg,#ff4d6d,#c9003b);color:white;
+  box-shadow:0 4px 20px #ff4d6d30;
+}
+.btn-delete:hover{opacity:.88;box-shadow:0 4px 30px #ff4d6d50;}
+
+.btn-clear{
+  background:rgba(143,163,193,.08);color:var(--muted);
+  border:1px solid var(--border);
+}
+.btn-clear:hover{background:rgba(143,163,193,.15);}
+
+/* STATUS BOX */
+.status{
+  border:1px solid var(--border);border-radius:14px;
+  padding:16px;text-align:center;font-size:14px;
+  background:#050b14;min-height:54px;
+  display:flex;align-items:center;justify-content:center;
+  letter-spacing:.5px;transition:all .3s;
+}
+.success{color:var(--accent);border-color:var(--accent)40;}
+.error{color:var(--danger);border-color:var(--danger)40;}
+.loading{color:var(--accent2);animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* DIVIDER */
+.divider{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:16px 0;}
+
+/* RECENT */
+.recent-title{font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:8px;}
+.recent-list{display:flex;flex-wrap:wrap;gap:6px;}
+.recent-item{
+  background:rgba(0,255,166,.06);border:1px solid var(--accent)20;
+  border-radius:8px;padding:4px 10px;font-size:12px;color:var(--accent);
+  cursor:pointer;transition:all .2s;letter-spacing:1px;
+}
+.recent-item:hover{background:rgba(0,255,166,.15);}
+
+/* FOOTER */
+.footer{margin-top:18px;font-size:11px;color:#3a5070;text-align:center;letter-spacing:2px;}
+
+/* LOGIN OVERLAY */
+.overlay{
+  position:fixed;inset:0;background:rgba(5,11,20,.97);
+  display:flex;justify-content:center;align-items:center;z-index:100;
+  backdrop-filter:blur(10px);
+}
+.login-card{
+  width:380px;max-width:92vw;
+  background:rgba(10,18,32,.98);
+  padding:32px;border-radius:24px;
+  border:1px solid var(--border);
+  box-shadow:0 0 60px #00ffa615;
+}
+.login-title{
+  font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  text-align:center;margin-bottom:8px;letter-spacing:2px;
+}
+.login-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:24px;letter-spacing:1px;}
+.login-input{
+  width:100%;padding:14px;border-radius:14px;
+  border:1px solid var(--border);background:#050b14;
+  color:white;margin-bottom:14px;outline:none;font-size:15px;
+  font-family:'Rajdhani',sans-serif;letter-spacing:2px;
+  transition:border-color .3s;
+}
+.login-input:focus{border-color:var(--accent);}
+.login-btn{
+  width:100%;padding:14px;border:none;border-radius:14px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#050b14;font-weight:700;cursor:pointer;font-size:15px;
+  font-family:'Orbitron',sans-serif;letter-spacing:2px;
+  transition:opacity .2s;
+}
+.login-btn:hover{opacity:.88;}
+.login-err{color:var(--danger);font-size:13px;text-align:center;margin-top:10px;min-height:20px;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="header">
+    <div class="logo-area">
+      <img src="https://i.postimg.cc/tgN7HVPg/image.png" class="logo">
+      <div class="brand">
+        <div class="brand-name">YOU WEB BOT</div>
+        <div class="brand-sub">ADMIN PANEL v2</div>
+      </div>
+    </div>
+    <div class="status-dot" title="Connecté"></div>
+  </div>
+
+  <div class="section-title">🗑️ Supprimer une session</div>
+
+  <div class="input-wrap">
+    <span class="input-icon">📱</span>
+    <input id="number" class="input" placeholder="Ex: 50941319791" type="tel">
+  </div>
+
+  <div class="row">
+    <button class="btn-check" onclick="handleCheck()">🔍 Vérifier</button>
+    <button class="btn-delete" onclick="handleDelete()">🗑️ Supprimer</button>
+    <button class="btn-clear" onclick="handleClear()">✕ Effacer</button>
+  </div>
+
+  <div id="status" class="status">En attente d'action...</div>
+
+  <div class="divider"></div>
+
+  <div class="recent-title">⚡ RÉCENTS</div>
+  <div id="recent" class="recent-list"></div>
+
+  <div class="footer">YOU WEB BOT — SECURE ADMIN SYSTEM</div>
+</div>
+
+<div id="loginOverlay" class="overlay">
+  <div class="login-card">
+    <div class="login-title">🔐 ADMIN ACCESS</div>
+    <div class="login-sub">YOU WEB BOT SECURE PANEL</div>
+    <input type="password" id="adminPass" class="login-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleLogin()">
+    <button class="login-btn" onclick="handleLogin()">ACCÉDER</button>
+    <div id="loginErr" class="login-err"></div>
+  </div>
+</div>
+
+<script>
+const PASSWORD = "youtechx";
+const API = "/api/session/delete";
+const API_CHECK = "/api/session/check";
+
+let recentNums = JSON.parse(sessionStorage.getItem('recent') || '[]');
+
+const el = id => document.getElementById(id);
+
+function show(msg, type = '') {
+  const b = el('status');
+  b.innerHTML = msg;
+  b.className = 'status ' + type;
+}
+
+function sanitize(n) { return (n || '').replace(/[^0-9]/g, ''); }
+
+function saveRecent(n) {
+  if (!n) return;
+  recentNums = [n, ...recentNums.filter(x => x !== n)].slice(0, 6);
+  sessionStorage.setItem('recent', JSON.stringify(recentNums));
+  renderRecent();
+}
+
+function renderRecent() {
+  const c = el('recent');
+  c.innerHTML = recentNums.map(n =>
+    `<div class="recent-item" onclick="el('number').value='${n}';handleCheck()">+${n}</div>`
+  ).join('');
+}
+
+function checkAuth() {
+  if (sessionStorage.getItem('auth') !== '1') {
+    el('loginOverlay').style.display = 'flex';
+    return false;
+  }
+  return true;
+}
+
+function handleLogin() {
+  const pass = el('adminPass').value;
+  if (pass === PASSWORD) {
+    sessionStorage.setItem('auth', '1');
+    el('loginOverlay').style.display = 'none';
+    show('✅ Connecté avec succès !', 'success');
+  } else {
+    el('adminPass').value = '';
+    el('adminPass').style.borderColor = '#ff4d6d';
+    el('loginErr').textContent = '❌ Mot de passe incorrect';
+    setTimeout(() => {
+      el('adminPass').style.borderColor = '';
+      el('loginErr').textContent = '';
+    }, 2000);
+  }
+}
+
+async function handleCheck() {
+  if (!checkAuth()) return;
+  const n = sanitize(el('number').value);
+  if (!n) return show('❌ Numéro invalide', 'error');
+  show(`<span class="loading">🔍 Vérification de +${n}...</span>`);
+  try {
+    const r = await fetch(API_CHECK || API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: n })
+    });
+    if (r.ok) {
+      const d = await r.json();
+      show(`✅ Session trouvée: <strong>+${n}</strong>${d.createdAt ? ' — ' + new Date(d.createdAt).toLocaleDateString() : ''}`, 'success');
+    } else {
+      show(`⚠️ Session introuvable pour +${n}`, 'error');
+    }
+  } catch (e) {
+    show(`✅ Numéro détecté: <strong>+${n}</strong>`, 'success');
+  }
+  saveRecent(n);
+}
+
+async function handleDelete() {
+  if (!checkAuth()) return;
+  const n = sanitize(el('number').value);
+  if (!n) return show('❌ Numéro invalide', 'error');
+  if (!confirm(`⚠️ Supprimer la session de +${n} ?\n\nCette action est irréversible.`)) return;
+  show(`<span class="loading">🗑️ Suppression de +${n}...</span>`);
+  try {
+    const r = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: n })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      show(`✅ Session +${n} supprimée avec succès !`, 'success');
+      el('number').value = '';
+    } else {
+      show('❌ ' + (d.error || 'Erreur inconnue'), 'error');
+    }
+  } catch (e) {
+    show('❌ Erreur réseau: ' + e.message, 'error');
+  }
+  saveRecent(n);
+}
+
+function handleClear() {
+  if (!checkAuth()) return;
+  el('number').value = '';
+  show('✕ Champ effacé');
+}
+
+window.onload = () => {
+  if (sessionStorage.getItem('auth') !== '1') {
+    el('loginOverlay').style.display = 'flex';
+  } else {
+    el('loginOverlay').style.display = 'none';
+  }
+  renderRecent();
+  el('adminPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleLogin();
+  });
+};
+</script>
+</body>
+</html>
