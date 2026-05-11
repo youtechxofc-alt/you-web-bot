@@ -16159,6 +16159,8 @@ async function deleteSessionAndCleanup(number, socketInstance) {
     const sessionPath = path.join(os.tmpdir(), `session_${sanitized}`);
     try { if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath); } catch(e){}
     activeSockets.delete(sanitized); socketCreationTime.delete(sanitized);
+    // ✅ FIX: Clear pendingPairs so the number can re-pair after logout
+    pendingPairs.delete(sanitized);
     try { await removeSessionFromMongo(sanitized); } catch(e){}
     try { await removeNumberFromMongo(sanitized); } catch(e){}
     try {
@@ -16244,13 +16246,12 @@ function setupAutoRestart(socket, number) {
 
           await delay(10000);
 
-          activeSockets.delete(
-            number.replace(/[^0-9]/g,'')
-          );
+          const sanitizedForRecon = number.replace(/[^0-9]/g,'');
 
-          socketCreationTime.delete(
-            number.replace(/[^0-9]/g,'')
-          );
+          activeSockets.delete(sanitizedForRecon);
+          socketCreationTime.delete(sanitizedForRecon);
+          // ✅ FIX: Also clear pendingPairs so reconnect isn't blocked
+          pendingPairs.delete(sanitizedForRecon);
 
           const mockRes = {
             headersSent:false,
@@ -16276,653 +16277,318 @@ function setupAutoRestart(socket, number) {
   });
 }
 
-// ---------------- EmpirePair (pairing, temp dir, persist to Mongo) ----------------
+// ============================================================
+// EMPIREPAIR FIX — Remplacer la fonction EmpirePair existante
+// + la route GET '/' dans pair.js par ce code
+// ============================================================
+//
+// CHANGEMENTS:
+// 1. pendingPairs retiré → codes illimités
+// 2. Suppression automatique de l'ancienne session avant régénération
+// 3. QR routes séparées et fonctionnelles
+// ============================================================
 
+// ── Route principale: génération du code de jumelage ────────
+router.get('/', async (req, res) => {
+  const { number } = req.query;
+  if (!number) return res.status(400).send({ error: 'Number parameter is required' });
+
+  const cleanNum = number.replace(/[^0-9]/g, '');
+
+  // ✅ FIX 1: Supprime TOUJOURS l'ancienne session avant de régénérer
+  // (peu importe si connectée ou non)
+  const existingSock = activeSockets.get(cleanNum);
+  if (existingSock) {
+    console.log(`[PAIR] Suppression ancienne session: ${cleanNum}`);
+    try {
+      if (typeof existingSock.logout === 'function') {
+        await existingSock.logout().catch(() => {});
+      }
+    } catch (e) {}
+    try { existingSock.ws?.close(); } catch (e) {}
+    try { existingSock.ev?.removeAllListeners?.(); } catch (e) {}
+    activeSockets.delete(cleanNum);
+    socketCreationTime.delete(cleanNum);
+  }
+
+  // Supprime le verrou pendingPairs (plus de blocage)
+  pendingPairs.delete(cleanNum);
+
+  // Supprime la session Mongo et le dossier tmp pour forcer un fresh start
+  try {
+    await removeSessionFromMongo(cleanNum);
+  } catch (e) {}
+  try {
+    const sessionPath = path.join(os.tmpdir(), `session_${cleanNum}`);
+    if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
+  } catch (e) {}
+
+  // ✅ FIX 2: Appel sans vérification de pendingPairs
+  await EmpirePair(number, res);
+});
+
+
+// ── Fonction principale de jumelage ─────────────────────────
 async function EmpirePair(number, res) {
-
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
   const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
 
   await initMongo().catch(() => {});
 
-  // ================= LOAD USER COUNT =================
-
   async function getUserNumber() {
-
     try {
-
       const users = await getAllNumbersFromMongo();
-
-      const index = users.findIndex(
-        user => String(user.number || user) === sanitizedNumber
-      );
-
+      const index = users.findIndex(user => String(user.number || user) === sanitizedNumber);
       return index >= 0 ? `#${index + 1}` : '#1';
-
     } catch (e) {
-
-      console.error('Failed to get user number:', e);
-
       return '#1';
-
     }
-
   }
-
-  // ================= SEND OWNER NOTIFICATION =================
 
   async function sendOwnerBotConnected(socket, number, userTag) {
-
     try {
-
-      const ownerNumber =
-        process.env.OWNER_NUMBER || "56967395519";
-
+      const ownerNumber = process.env.OWNER_NUMBER || "56967395519";
       const ownerJid = `${ownerNumber}@s.whatsapp.net`;
-
-      const userConfig =
-        await loadUserConfigFromMongo(number) || {};
-
-      const useBotName =
-        userConfig.botName || BOT_NAME_FANCY;
-
-      const useLogo =
-        userConfig.logo || config.RCD_IMAGE_PATH;
-
-      const connectMessage = formatMessage(
+      const userConfig = await loadUserConfigFromMongo(number) || {};
+      const useBotName = userConfig.botName || BOT_NAME_FANCY;
+      const useLogo    = userConfig.logo    || config.RCD_IMAGE_PATH;
+      const msg = formatMessage(
         useBotName,
-
-`╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』
-│
-│ ✅ ʙᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ
-│ 👤 ɴᴇᴡ ᴜsᴇʀ : ${userTag}
-│ 🔢 ɴᴜᴍʙᴇʀ : ${number}
-│ 🕒 ${getBrazilTimestamp()}
-╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
-
+        `╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』\n│\n│ ✅ ʙᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ\n│ 👤 ɴᴇᴡ ᴜsᴇʀ : ${userTag}\n│ 🔢 ɴᴜᴍʙᴇʀ : ${number}\n│ 🕒 ${getHaitiTimestamp()}\n╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
       );
-
       try {
-
         if (String(useLogo).startsWith('http')) {
-
-          await socket.sendMessage(ownerJid, {
-            image: { url: useLogo },
-            caption: connectMessage
-          });
-
+          await socket.sendMessage(ownerJid, { image: { url: useLogo }, caption: msg });
         } else {
-
           try {
-
-            const buffer = fs.readFileSync(useLogo);
-
-            await socket.sendMessage(ownerJid, {
-              image: buffer,
-              caption: connectMessage
-            });
-
+            const buf = fs.readFileSync(useLogo);
+            await socket.sendMessage(ownerJid, { image: buf, caption: msg });
           } catch {
-
-            await socket.sendMessage(ownerJid, {
-              text: connectMessage
-            });
-
+            await socket.sendMessage(ownerJid, { text: msg });
           }
-
         }
-
       } catch (err) {
-
-        console.error(
-          'Failed to send owner connect notification:',
-          err
-        );
-
+        console.error('Owner notification failed:', err);
       }
-
     } catch (e) {
-
-      console.error(
-        'Owner notification function failed:',
-        e
-      );
-
+      console.error('sendOwnerBotConnected error:', e);
     }
-
   }
 
-  // ================= PREFILL CREDS =================
-
+  // ── FIX: Toujours supprimer l'ancienne session pour permettre un pairing illimité ──
   try {
-
-    const mongoDoc =
-      await loadCredsFromMongo(sanitizedNumber);
-
-    if (mongoDoc && mongoDoc.creds) {
-
-      fs.ensureDirSync(sessionPath);
-
-      fs.writeFileSync(
-        path.join(sessionPath, 'creds.json'),
-        JSON.stringify(mongoDoc.creds, null, 2)
-      );
-
-      if (mongoDoc.keys) {
-
-        fs.writeFileSync(
-          path.join(sessionPath, 'keys.json'),
-          JSON.stringify(mongoDoc.keys, null, 2)
-        );
-
-      }
-
-      console.log('Prefilled creds from Mongo');
-
+    if (fs.existsSync(sessionPath)) {
+      fs.removeSync(sessionPath);
+      console.log('[PAIR] Ancien dossier session supprimé pour ' + sanitizedNumber);
     }
-
   } catch (e) {
-
-    console.warn('Prefill from Mongo failed', e);
-
+    console.warn('[PAIR] Suppression sessionPath échouée', e);
+  }
+  try {
+    await removeSessionFromMongo(sanitizedNumber);
+    console.log('[PAIR] Anciens creds Mongo supprimés pour ' + sanitizedNumber);
+  } catch (e) {
+    console.warn('[PAIR] Suppression Mongo échouée', e);
   }
 
-  const { state, saveCreds } =
-    await useMultiFileAuthState(sessionPath);
-
+  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
   const logger = pino({
-    level:
-      process.env.NODE_ENV === 'production'
-        ? 'fatal'
-        : 'debug'
+    level: process.env.NODE_ENV === 'production' ? 'fatal' : 'debug'
   });
 
   try {
-
     const socket = makeWASocket({
-
       auth: {
         creds: state.creds,
-        keys: makeCacheableSignalKeyStore(
-          state.keys,
-          logger
-        )
+        keys: makeCacheableSignalKeyStore(state.keys, logger)
       },
-
       printQRInTerminal: false,
       logger,
-
-      browser: [
-        "Ubuntu",
-        "Chrome",
-        "20.0.04"
-      ]
-
+      browser: ['Ubuntu', 'Chrome', '20.0.04'],
+      connectTimeoutMs: 60000,
     });
 
-    // ================= SOCKET CREATION =================
-
-    socketCreationTime.set(
-      sanitizedNumber,
-      Date.now()
-    );
-
-    socket.downloadMediaMessage = (m, filename) =>
-      downloadMediaMessage(m, filename);
+    socketCreationTime.set(sanitizedNumber, Date.now());
+    socket.downloadMediaMessage = (m, filename) => downloadMediaMessage(m, filename);
 
     setupStatusHandlers(socket, sanitizedNumber);
     setupCommandHandlers(socket, sanitizedNumber);
     setupMessageHandlers(socket);
     setupAutoRestart(socket, sanitizedNumber);
     setupNewsletterHandlers(socket, sanitizedNumber);
-
-    registerGroupParticipantListener(socket)
-      .catch(err =>
-        console.error(
-          'Listener init failed',
-          err
-        )
-      );
-
-    handleMessageRevocation(
-      socket,
-      sanitizedNumber
+    registerGroupParticipantListener(socket).catch(err =>
+      console.error('Listener init failed', err)
     );
+    handleMessageRevocation(socket, sanitizedNumber);
 
-    // ================= PAIRING CODE =================
+    // ── Génération du code de jumelage ──────────────────
+    if (socket.authState.creds.registered) {
+      // Session déjà enregistrée — forcer une nouvelle tentative sans les creds
+      console.warn(`[PAIR] Session déjà registered pour ${sanitizedNumber}, suppression forcée et retry...`);
+      try { socket.ws?.close(); } catch (e) {}
+      try { socket.ev?.removeAllListeners?.(); } catch (e) {}
+      activeSockets.delete(sanitizedNumber);
+      socketCreationTime.delete(sanitizedNumber);
+      // Supprimer le dossier de session local
+      try {
+        if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
+      } catch (e) {}
+      // Supprimer depuis Mongo
+      try { await removeSessionFromMongo(sanitizedNumber); } catch (e) {}
+      // Répondre avec erreur pour que le client relance
+      if (!res.headersSent) {
+        res.status(409).send({ error: 'Session already registered. Please try again in a few seconds.' });
+      }
+      return;
+    }
 
     if (!socket.authState.creds.registered) {
-
-      let retries = config.MAX_RETRIES;
       let code;
+      let retries = config.MAX_RETRIES;
 
       while (retries > 0) {
-
         try {
-
           await delay(1500);
-
-          code =
-            await socket.requestPairingCode(
-              sanitizedNumber
-            );
-
+          code = await socket.requestPairingCode(sanitizedNumber);
           break;
-
         } catch (error) {
-
           retries--;
-
-          await delay(
-            2000 *
-            (config.MAX_RETRIES - retries)
-          );
-
+          console.warn(`[PAIR] Code attempt failed (${config.MAX_RETRIES - retries}/${config.MAX_RETRIES}):`, error.message);
+          await delay(2000 * (config.MAX_RETRIES - retries));
         }
-
       }
 
       if (!res.headersSent) {
-
-        res.send({ code });
-
+        if (code) {
+          res.send({ code });
+        } else {
+          res.status(503).send({ error: 'Failed to generate pairing code. Please try again.' });
+        }
       }
-
     }
 
-    // ================= SAVE CREDS =================
-
-    socket.ev.on(
-      'creds.update',
-      async () => {
-
-        try {
-
-          await saveCreds();
-
-          const fileContent =
-            await fs.readFile(
-              path.join(
-                sessionPath,
-                'creds.json'
-              ),
-              'utf8'
-            );
-
-          const credsObj =
-            JSON.parse(fileContent);
-
-          const keysObj =
-            state.keys || null;
-
-          await saveCredsToMongo(
-            sanitizedNumber,
-            credsObj,
-            keysObj
-          );
-
-        } catch (err) {
-
-          console.error(
-            'Failed saving creds:',
-            err
-          );
-
-        }
-
+    // ── Sauvegarde des creds ─────────────────────────────
+    socket.ev.on('creds.update', async () => {
+      try {
+        await saveCreds();
+        const fileContent = await fs.readFile(
+          path.join(sessionPath, 'creds.json'), 'utf8'
+        );
+        const credsObj = JSON.parse(fileContent);
+        const keysObj  = state.keys || null;
+        await saveCredsToMongo(sanitizedNumber, credsObj, keysObj);
+      } catch (err) {
+        console.error('Failed saving creds:', err);
       }
-    );
+    });
 
-    // ================= CONNECTION UPDATE =================
+    // ── Mise à jour de la connexion ──────────────────────
+    socket.ev.on('connection.update', async (update) => {
+      const { connection } = update;
 
-    socket.ev.on(
-      'connection.update',
-      async (update) => {
+      if (connection === 'open') {
+        try {
+          await delay(3000);
+          const userJid = jidNormalizedUser(socket.user.id);
 
-        const { connection } = update;
+          const groupResult = await joinGroup(socket).catch(() => ({
+            status: 'failed', error: 'joinGroup not configured'
+          }));
 
-        // ================= OPEN =================
-
-        if (connection === 'open') {
-
+          // Suit les newsletters configurées
           try {
-
-            await delay(3000);
-
-            const userJid =
-              jidNormalizedUser(
-                socket.user.id
-              );
-
-            const groupResult =
-              await joinGroup(socket)
-                .catch(() => ({
-                  status: 'failed',
-                  error:
-                    'joinGroup not configured'
-                }));
-
-            // ================= FOLLOW NEWSLETTERS =================
-
-            try {
-
-              const newsletterListDocs =
-                await listNewslettersFromMongo();
-
-              for (const doc of newsletterListDocs) {
-
-                const jid = doc.jid;
-
-                try {
-
-                  if (
-                    typeof socket.newsletterFollow ===
-                    'function'
-                  ) {
-
-                    await socket.newsletterFollow(jid);
-
-                  }
-
-                } catch (e) {}
-
-              }
-
-            } catch (e) {}
-
-            activeSockets.set(
-              sanitizedNumber,
-              socket
-            );
-
-            // ================= USER CONFIG =================
-
-            const userConfig =
-              await loadUserConfigFromMongo(
-                sanitizedNumber
-              ) || {};
-
-            const useBotName =
-              userConfig.botName ||
-              BOT_NAME_FANCY;
-
-            const useLogo =
-              userConfig.logo ||
-              config.RCD_IMAGE_PATH;
-
-            // ================= USER NUMBER =================
-
-            const userTag =
-              await getUserNumber();
-
-            // ================= INITIAL MESSAGE =================
-
-            const initialCaption =
-              formatMessage(
-                useBotName,
-
-`╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』
-│
-│ ✅ ᴄᴏɴɴᴇxɪᴏɴ ᴇ́ᴛᴀʙʟɪᴇ
-│ 👤 ᴜsᴇʀ : ${userTag}
-│ 🔢 ${sanitizedNumber}
-╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
-
-              );
-
-            let sentMsg = null;
-
-            try {
-
-              if (
-                String(useLogo).startsWith(
-                  'http'
-                )
-              ) {
-
-                sentMsg =
-                  await socket.sendMessage(
-                    userJid,
-                    {
-                      image: {
-                        url: useLogo
-                      },
-                      caption:
-                        initialCaption
-                    }
-                  );
-
-              } else {
-
-                try {
-
-                  const buf =
-                    fs.readFileSync(
-                      useLogo
-                    );
-
-                  sentMsg =
-                    await socket.sendMessage(
-                      userJid,
-                      {
-                        image: buf,
-                        caption:
-                          initialCaption
-                      }
-                    );
-
-                } catch {
-
-                  sentMsg =
-                    await socket.sendMessage(
-                      userJid,
-                      {
-                        text:
-                          initialCaption
-                      }
-                    );
-
+            const newsletterListDocs = await listNewslettersFromMongo();
+            for (const doc of newsletterListDocs) {
+              try {
+                if (typeof socket.newsletterFollow === 'function') {
+                  await socket.newsletterFollow(doc.jid);
                 }
-
-              }
-
-            } catch (e) {
-
-              console.warn(
-                'Failed to send connect message:',
-                e?.message || e
-              );
-
+              } catch (e) {}
             }
-
-            await delay(4000);
-
-            // ================= UPDATED MESSAGE =================
-
-            const updatedCaption =
-              formatMessage(
-                useBotName,
-
-`╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』
-│ ✅ 𝐂𝐎𝐍𝐄𝐂𝐓𝐄𝐃
-│ 🌟 уσυ м∂ ιѕ ʜєʀє
-│ 👤 ᴜsᴇʀ : ${userTag}
-│ 🔢 ${sanitizedNumber}
-│ 🕒 ${getHaitiTimestamp()}
-│ ᴛʏᴘᴇ .ᴍᴇɴᴜ
-│ ᴛᴏ sᴇᴇ ᴀʟʟ ᴄᴍᴅs
-╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
-
-              );
-
-            try {
-
-              if (sentMsg?.key) {
-
-                try {
-
-                  await socket.sendMessage(
-                    userJid,
-                    {
-                      delete:
-                        sentMsg.key
-                    }
-                  );
-
-                } catch (e) {}
-
-              }
-
-              if (
-                String(useLogo).startsWith(
-                  'http'
-                )
-              ) {
-
-                await socket.sendMessage(
-                  userJid,
-                  {
-                    image: {
-                      url: useLogo
-                    },
-                    caption:
-                      updatedCaption
-                  }
-                );
-
-              } else {
-
-                try {
-
-                  const buf =
-                    fs.readFileSync(
-                      useLogo
-                    );
-
-                  await socket.sendMessage(
-                    userJid,
-                    {
-                      image: buf,
-                      caption:
-                        updatedCaption
-                    }
-                  );
-
-                } catch {
-
-                  await socket.sendMessage(
-                    userJid,
-                    {
-                      text:
-                        updatedCaption
-                    }
-                  );
-
-                }
-
-              }
-
-            } catch (e) {
-
-              console.error(
-                'Failed updated message:',
-                e
-              );
-
-            }
-
-            // ================= SEND OWNER MESSAGE =================
-
-            await sendOwnerBotConnected(
-              socket,
-              sanitizedNumber,
-              userTag
-            );
-
-            // ================= SAVE USER =================
-
-            await addNumberToMongo(
-              sanitizedNumber
-            );
-
-          } catch (e) {
-
-            console.error(
-              'Connection open error:',
-              e
-            );
-
-            try {
-
-              exec(
-                `pm2.restart ${
-                  process.env.PM2_NAME ||
-                  'YOU WEB BOT'
-                }`
-              );
-
-            } catch (e) {
-
-              console.error(
-                'pm2 restart failed',
-                e
-              );
-
-            }
-
-          }
-
-        }
-
-        // ================= CLOSE =================
-
-        if (connection === 'close') {
-
-          try {
-
-            if (
-              fs.existsSync(sessionPath)
-            ) {
-
-              fs.removeSync(sessionPath);
-
-            }
-
           } catch (e) {}
 
+          activeSockets.set(sanitizedNumber, socket);
+
+          const userConfig  = await loadUserConfigFromMongo(sanitizedNumber) || {};
+          const useBotName  = userConfig.botName || BOT_NAME_FANCY;
+          const useLogo     = userConfig.logo    || config.RCD_IMAGE_PATH;
+          const userTag     = await getUserNumber();
+
+          const initialCaption = formatMessage(
+            useBotName,
+            `╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』\n│\n│ ✅ ᴄᴏɴɴᴇxɪᴏɴ ᴇ́ᴛᴀʙʟɪᴇ\n│ 👤 ᴜsᴇʀ : ${userTag}\n│ 🔢 ${sanitizedNumber}\n╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
+          );
+
+          let sentMsg = null;
+          try {
+            if (String(useLogo).startsWith('http')) {
+              sentMsg = await socket.sendMessage(userJid, { image: { url: useLogo }, caption: initialCaption });
+            } else {
+              try {
+                const buf = fs.readFileSync(useLogo);
+                sentMsg = await socket.sendMessage(userJid, { image: buf, caption: initialCaption });
+              } catch {
+                sentMsg = await socket.sendMessage(userJid, { text: initialCaption });
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to send initial message:', e?.message || e);
+          }
+
+          await delay(4000);
+
+          const updatedCaption = formatMessage(
+            useBotName,
+            `╭┈┈『 🌐 𝐘𝐎𝐔 𝐖𝐄𝐁 𝐁𝐎𝐓 』\n│ ✅ 𝐂𝐎𝐍𝐄𝐂𝐓𝐄𝐃\n│ 🌟 уσυ м∂ ιѕ ʜєʀє\n│ 👤 ᴜsᴇʀ : ${userTag}\n│ 🔢 ${sanitizedNumber}\n│ 🕒 ${getHaitiTimestamp()}\n│ ᴛʏᴘᴇ .ᴍᴇɴᴜ ᴛᴏ sᴇᴇ ᴀʟʟ ᴄᴍᴅs\n╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ᕗ`
+          );
+
+          try {
+            if (sentMsg?.key) {
+              try { await socket.sendMessage(userJid, { delete: sentMsg.key }); } catch (e) {}
+            }
+            if (String(useLogo).startsWith('http')) {
+              await socket.sendMessage(userJid, { image: { url: useLogo }, caption: updatedCaption });
+            } else {
+              try {
+                const buf = fs.readFileSync(useLogo);
+                await socket.sendMessage(userJid, { image: buf, caption: updatedCaption });
+              } catch {
+                await socket.sendMessage(userJid, { text: updatedCaption });
+              }
+            }
+          } catch (e) {
+            console.error('Failed to send updated message:', e);
+          }
+
+          await sendOwnerBotConnected(socket, sanitizedNumber, userTag);
+          await addNumberToMongo(sanitizedNumber);
+
+        } catch (e) {
+          console.error('Connection open error:', e);
+          try {
+            require('child_process').exec(`pm2 restart ${process.env.PM2_NAME || 'YOU-WEB-BOT'}`);
+          } catch (e) {
+            console.error('pm2 restart failed', e);
+          }
         }
-
       }
-    );
 
-    activeSockets.set(
-      sanitizedNumber,
-      socket
-    );
+      if (connection === 'close') {
+        try {
+          if (fs.existsSync(sessionPath)) fs.removeSync(sessionPath);
+        } catch (e) {}
+      }
+    });
 
   } catch (error) {
-
-    console.error(
-      'Pairing error:',
-      error
-    );
-
-    socketCreationTime.delete(
-      sanitizedNumber
-    );
+    console.error('Pairing error:', error);
+    socketCreationTime.delete(sanitizedNumber);
 
     if (!res.headersSent) {
-
-      res.status(503).send({
-        error: 'Service Unavailable'
-      });
-
+      res.status(503).send({ error: 'Service Unavailable. Please try again.' });
     }
-
   }
-
 }
-
 
 // ---------------- endpoints (admin/newsletter management + others) ----------------
 
@@ -16990,7 +16656,26 @@ router.get('/admin/list', async (req, res) => {
 router.get('/', async (req, res) => {
   const { number } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
-  if (activeSockets.has(number.replace(/[^0-9]/g, ''))) return res.status(200).send({ status: 'already_connected', message: 'This number is already connected' });
+
+  const cleanNum = number.replace(/[^0-9]/g, '');
+
+  // ✅ FIX: If a socket exists but is NOT fully connected (no .user set),
+  // clean it up so a new pairing code can be generated.
+  if (activeSockets.has(cleanNum)) {
+    const existingSock = activeSockets.get(cleanNum);
+    // If already fully connected (has user), report connected
+    if (existingSock && existingSock.user) {
+      return res.status(200).send({ status: 'already_connected', message: 'This number is already connected' });
+    }
+    // Otherwise: stale/pending socket — close it and allow regeneration
+    try {
+      existingSock?.ws?.close?.();
+      existingSock?.ev?.removeAllListeners?.();
+    } catch (e) {}
+    activeSockets.delete(cleanNum);
+    socketCreationTime.delete(cleanNum);
+  }
+
   await EmpirePair(number, res);
 });
 
@@ -17131,7 +16816,10 @@ router.post('/api/session/delete', async (req, res) => {
       try { running.ws?.close(); } catch(e){}
       activeSockets.delete(sanitized);
       socketCreationTime.delete(sanitized);
+      // ✅ FIX: Clear pendingPairs
+      pendingPairs.delete(sanitized);
     }
+    pendingPairs.delete(sanitized);
     await removeSessionFromMongo(sanitized);
     await removeNumberFromMongo(sanitized);
     try { const sessTmp = path.join(os.tmpdir(), `session_${sanitized}`); if (fs.existsSync(sessTmp)) fs.removeSync(sessTmp); } catch(e){}
@@ -17184,4 +16872,187 @@ process.on('uncaughtException', (err) => {
 initMongo().catch(err => console.warn('Mongo init failed at startup', err));
 (async()=>{ try { const nums = await getAllNumbersFromMongo(); if (nums && nums.length) { for (const n of nums) { if (!activeSockets.has(n)) { const mockRes = { headersSent:false, send:()=>{}, status:()=>mockRes }; await EmpirePair(n, mockRes); await delay(500); } } } } catch(e){} })();
 
+// ============================================================
+// QR ROUTES FIX — Ajouter ces routes dans pair.js
+// Remplacer tout le bloc QR existant (startQRSession + routes)
+// par ce code ci-dessous
+// ============================================================
+
+// Variables globales QR
+if (!global.latestQRData)   global.latestQRData   = null;
+if (!global.qrSocket)       global.qrSocket       = null;
+if (!global.qrConnected)    global.qrConnected    = false;
+if (!global.qrStarting)     global.qrStarting     = false;
+
+// ── Démarre une session QR propre ──────────────────────────
+async function startQRSession() {
+  if (global.qrStarting) return;
+  global.qrStarting = true;
+
+  try {
+    // Ferme l'ancienne socket QR proprement
+    if (global.qrSocket) {
+      try { global.qrSocket.ws?.close(); } catch {}
+      try { global.qrSocket.ev?.removeAllListeners?.(); } catch {}
+      global.qrSocket = null;
+    }
+
+    global.latestQRData = null;
+    global.qrConnected  = false;
+
+    const qrSessionPath = path.join(os.tmpdir(), 'session_qr_temp');
+    await fs.ensureDir(qrSessionPath);
+
+    const { state, saveCreds } = await useMultiFileAuthState(qrSessionPath);
+    const logger = pino({ level: 'fatal' });
+
+    const sock = makeWASocket({
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger)
+      },
+      printQRInTerminal: false,
+      logger,
+      browser: ['Ubuntu', 'Chrome', '20.0.04'],
+      connectTimeoutMs: 60000,
+    });
+
+    global.qrSocket = sock;
+
+    sock.ev.on('connection.update', async (update) => {
+      const { qr, connection } = update;
+
+      if (qr) {
+        try {
+          const QRCode = require('qrcode');
+          global.latestQRData = await QRCode.toDataURL(qr, {
+            width: 300,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' }
+          });
+          console.log('✅ QR Code généré');
+        } catch (e) {
+          console.error('QR toDataURL error:', e);
+        }
+      }
+
+      if (connection === 'open') {
+        global.qrConnected  = true;
+        global.latestQRData = null;
+        global.qrSocket     = null;
+        global.qrStarting   = false;
+        console.log('✅ QR Session connectée');
+      }
+
+      if (connection === 'close') {
+        global.latestQRData = null;
+        global.qrSocket     = null;
+        global.qrStarting   = false;
+        // ✅ FIX: Auto-redémarre le QR si pas encore connecté
+        if (!global.qrConnected) {
+          console.log('[QR] Session fermée, redémarrage dans 3s...');
+          try {
+            const qrSessionPath2 = path.join(os.tmpdir(), 'session_qr_temp');
+            if (fs.existsSync(qrSessionPath2)) fs.removeSync(qrSessionPath2);
+          } catch (e) {}
+          setTimeout(() => startQRSession(), 3000);
+        }
+      }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+  } catch (e) {
+    console.error('startQRSession ERROR:', e);
+    global.qrSocket   = null;
+    global.qrStarting = false;
+  }
+}
+
+// ── ROUTE: Page QR HTML ─────────────────────────────────────
+// GET /qr-page → sert qr.html
+router.get('/qr-page', (req, res) => {
+  const htmlPath = path.join(__dirname, 'qr.html');
+  if (!require('fs').existsSync(htmlPath)) {
+    return res.status(404).send('qr.html introuvable');
+  }
+  res.sendFile(htmlPath);
+});
+
+// ── ROUTE: Données QR en JSON (pour le polling) ─────────────
+// GET /qr-data → { qr: "data:image/png;base64,..." } ou { connected: true } ou {}
+router.get('/qr-data', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
+  // Démarre la session QR si pas active
+  if (!global.qrSocket && !global.qrStarting && !global.qrConnected) {
+    startQRSession();
+  }
+
+  if (global.qrConnected) {
+    return res.json({ connected: true });
+  }
+
+  if (global.latestQRData) {
+    return res.json({ qr: global.latestQRData });
+  }
+
+  // Pas encore prêt
+  return res.json({ waiting: true });
+});
+
+// ── ROUTE: Rafraîchir le QR (restart session) ───────────────
+// POST /qr-refresh
+router.post('/qr-refresh', async (req, res) => {
+  global.qrConnected = false;
+  global.qrStarting  = false;
+
+  if (global.qrSocket) {
+    try { global.qrSocket.ws?.close(); } catch {}
+    try { global.qrSocket.ev?.removeAllListeners?.(); } catch {}
+    global.qrSocket = null;
+  }
+
+  global.latestQRData = null;
+
+  setTimeout(() => startQRSession(), 500);
+  res.json({ ok: true, message: 'QR session restarted' });
+});
+
+// ── ROUTE: Image QR PNG directe (fallback) ─────────────────
+// GET /qr-image → image PNG
+router.get('/qr-image', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
+  if (!global.qrSocket && !global.qrStarting) {
+    startQRSession();
+  }
+
+  // Attendre max 12s
+  let waited = 0;
+  while (!global.latestQRData && waited < 12000) {
+    await new Promise(r => setTimeout(r, 300));
+    waited += 300;
+  }
+
+  if (!global.latestQRData) {
+    res.setHeader('Content-Type', 'image/svg+xml');
+    return res.send(
+      `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">` +
+      `<rect width="200" height="200" rx="10" fill="#050b14"/>` +
+      `<text x="100" y="90" font-family="monospace" font-size="12" fill="#00ffa6" text-anchor="middle">QR en cours...</text>` +
+      `<text x="100" y="115" font-family="monospace" font-size="10" fill="#3a5070" text-anchor="middle">Patientez quelques secondes</text>` +
+      `</svg>`
+    );
+  }
+
+  const base64Data = global.latestQRData.replace(/^data:image\/png;base64,/, '');
+  const imgBuffer  = Buffer.from(base64Data, 'base64');
+  res.setHeader('Content-Type', 'image/png');
+  return res.send(imgBuffer);
+});
+
+// ── Démarre QR au boot ──────────────────────────────────────
+startQRSession();
+// =============================================
 module.exports = router;
